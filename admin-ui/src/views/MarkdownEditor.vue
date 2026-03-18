@@ -59,7 +59,7 @@ const props = defineProps({
 })
 
 const tabs = ref([
-  { id: 1, title: '新建文档 1', content: '# 营销文案\n在这里输入内容...', isEditing: false }
+  { id: 1, title: '新建文档 1', content: '# 营销文案\n\n在这里输入内容...\n\n\n\n\n\n\n\n\n\n\n\n', isEditing: false }
 ])
 const activeTabId = ref(1)
 
@@ -77,7 +77,7 @@ const doneEdit = (tab) => {
 
 const addTab = () => {
   const newId = Date.now()
-  tabs.value.push({ id: newId, title: `新建文档 ${tabs.value.length + 1}`, content: '# 营销文案\n在这里输入内容...', isEditing: false })
+  tabs.value.push({ id: newId, title: `新建文档 ${tabs.value.length + 1}`, content: '# 营销文案\n\n在这里输入内容...\n\n\n\n\n\n\n\n\n\n\n\n', isEditing: false })
   activeTabId.value = newId
 }
 
