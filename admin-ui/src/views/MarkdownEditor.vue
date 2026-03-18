@@ -1,45 +1,59 @@
 <template>
-  <div class="chrome-style-container">
-    <!-- 1. 极简标签栏 -->
-    <div class="tabs-bar">
+  <!-- 移除 app-container，改用一个不带 padding 的满屏容器 -->
+  <div class="editor-fullscreen-container">
+    <!-- 1. 标签栏：紧贴边缘 -->
+    <div class="tabs-header-bar">
       <div
           v-for="(tab, index) in tabs"
           :key="tab.id"
-          :class="['tab-item', { active: activeTabId === tab.id }]"
+          :class="['tab-node', { active: activeTabId === tab.id }]"
           @click="activeTabId = tab.id"
           @dblclick="editTabTitle(tab)"
       >
         <input
             v-if="tab.isEditing"
             v-model="tab.title"
-            class="tab-input"
+            class="tab-input-box"
             v-focus
             @blur="doneEdit(tab)"
             @keyup.enter="doneEdit(tab)"
             @click.stop
         />
-        <span v-else class="tab-text">{{ tab.title || '未命名' }}</span>
-        <span class="tab-close-icon" @click.stop="removeTab(index)">×</span>
+        <span v-else class="tab-label-text">{{ tab.title || '新文档' }}</span>
+        <span class="tab-close-btn" @click.stop="removeTab(index)">×</span>
       </div>
-      <button class="add-btn" @click="addTab" title="新建文档">+</button>
+      <button class="add-tab-btn" @click="addTab">+</button>
     </div>
 
-    <!-- 2. 编辑器主体 -->
-    <div class="editor-wrapper">
+    <!-- 2. 编辑器主体：通过 Flex 1 占据所有剩余空间 -->
+    <div class="editor-content-area">
       <Editor
           :value="activeTabContent"
           :plugins="plugins"
           :locale="zhHans"
           mode="split"
           :placeholder="placeholder"
-          class="custom-bytemd"
+          class="bytemd-instance-override"
           @change="handleChange"
       />
+    </div>
+    <!-- 3. 左下角功能操作栏 -->
+    <div class="editor-footer">
+      <div class="action-group top-row">
+        <el-button type="success" size="small" plain icon="MagicStick">美化此篇</el-button>
+        <el-button type="warning" size="small" plain icon="EditPen">续写此篇</el-button>
+        <el-button type="info" size="small" plain icon="VideoPlay">开始编辑</el-button>
+      </div>
+      <div class="action-group bottom-row">
+        <el-button type="primary" link icon="DocumentCopy" @click="copyAll">复制全部</el-button>
+        <el-button type="primary" link icon="Download" @click="downloadAll">下载全部</el-button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
+// ... (script 逻辑保持不变，确保 vFocus 指令存在)
 import { ref, computed } from 'vue'
 import { Editor } from '@bytemd/vue-next'
 import gfm from '@bytemd/plugin-gfm'
@@ -47,22 +61,19 @@ import highlight from '@bytemd/plugin-highlight'
 import math from '@bytemd/plugin-math'
 import mermaid from '@bytemd/plugin-mermaid'
 import zhHans from 'bytemd/locales/zh_Hans.json'
+import { MagicStick, EditPen, VideoPlay, DocumentCopy, Download } from '@element-plus/icons-vue'
 
 import 'bytemd/dist/index.css'
 import 'katex/dist/katex.css'
 import 'highlight.js/styles/github.css'
 
 const vFocus = { mounted: (el) => el.focus() }
-
-const props = defineProps({
-  placeholder: { type: String, default: '开始你的创作...' }
-})
+const props = defineProps({ placeholder: { type: String, default: '开始创作...' } })
 
 const tabs = ref([
-  { id: 1, title: '新建文档 1', content: '# 营销文案\n\n在这里输入内容...\n\n\n\n\n\n\n\n\n\n\n\n', isEditing: false }
+  { id: 1, title: '新建文档 1', content: '# 营销文案\n\n在此编写...\n\n\n\n\n\n\n\n\n\n', isEditing: false }
 ])
 const activeTabId = ref(1)
-
 const plugins = [gfm(), highlight(), math(), mermaid()]
 
 const activeTabContent = computed(() => {
@@ -70,14 +81,11 @@ const activeTabContent = computed(() => {
 })
 
 const editTabTitle = (tab) => { tab.isEditing = true }
-const doneEdit = (tab) => {
-  tab.isEditing = false
-  if (!tab.title.trim()) tab.title = '未命名'
-}
+const doneEdit = (tab) => { tab.isEditing = false; if (!tab.title.trim()) tab.title = '未命名' }
 
 const addTab = () => {
   const newId = Date.now()
-  tabs.value.push({ id: newId, title: `新建文档 ${tabs.value.length + 1}`, content: '# 营销文案\n\n在这里输入内容...\n\n\n\n\n\n\n\n\n\n\n\n', isEditing: false })
+  tabs.value.push({ id: newId, title: `新建文档 ${tabs.value.length + 1}`, content: '# 营销文案\n\n在此编写...\n\n\n\n\n\n\n\n\n\n', isEditing: false })
   activeTabId.value = newId
 }
 
@@ -92,130 +100,178 @@ const handleChange = (v) => {
   const tab = tabs.value.find(t => t.id === activeTabId.value)
   if (tab) tab.content = v
 }
+
+/* TODO/
+   示例
+
+ */
+
+const copyAll = () => {
+  navigator.clipboard.writeText(activeTabContent.value)
+  // ElMessage.success('已复制到剪贴板')
+}
+const downloadAll = () => {
+  console.log('执行下载:', activeTabId.value)
+}
+
 </script>
 
 <style scoped>
-/* 容器撑满屏幕 */
-.chrome-style-container {
+/* 1. 顶层容器：强制减去外部 Padding 的影响 */
+.editor-fullscreen-container {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 120px); /* 减去顶部面包屑和间距的高度 */
+  /* 关键：视口高度减去外部导航栏的高度（根据你的实际情况调整） */
+  height: calc(100vh - 140px);
   background: #fff;
-  border: 1px solid #e1e4e8;
-  border-radius: 6px;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
   overflow: hidden;
-  margin: 10px;
+  /* 抵消父级 .app-container 可能存在的 padding 影响 */
+  margin: -10px -10px 0 -10px;
 }
 
-/* 极简标签栏 */
-.tabs-bar {
+/* 2. 标签栏：适配你实例中的 Element 风格色彩 */
+.tabs-header-bar {
   display: flex;
   align-items: center;
+  background: #f5f7fa; /* 匹配 .reasoning-box 的背景色 */
   padding: 8px 12px 0;
-  background: #fff; /* 保持与整体一致 */
-  gap: 4px;
+  border-bottom: 1px solid #ebeef5;
 }
 
-.tab-item {
-  position: relative;
+.tab-node {
   display: flex;
   align-items: center;
-  height: 32px;
-  padding: 0 12px;
-  min-width: 80px;
-  max-width: 180px;
-  cursor: pointer;
-  font-size: 13px;
-  color: #6a737d;
-  border-radius: 6px 6px 0 0;
-  transition: all 0.2s;
-  border: 1px solid transparent;
+  height: 36px;
+  padding: 0 16px;
+  background: #f0f2f5;
+  border: 1px solid #ebeef5;
   border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  margin-right: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #606266;
+  transition: all 0.2s;
 }
 
-.tab-item:hover {
-  background: #f6f8fa;
-}
-
-.tab-item.active {
+.tab-node.active {
   background: #fff;
-  color: #24292e;
-  border-color: #e1e4e8;
-  font-weight: 500;
-  box-shadow: 0 -2px 8px rgba(0,0,0,0.02);
+  color: #409eff; /* 匹配你 CSS 中的主色 */
+  font-weight: 600;
+  height: 37px; /* 盖住底边线 */
+  margin-bottom: -1px;
+  z-index: 10;
 }
 
-/* 激活状态下的底部遮挡线，实现一体化 */
-.tab-item.active::after {
-  content: '';
-  position: absolute;
-  bottom: -1px;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: #fff;
-  z-index: 2;
-}
-
-.tab-text {
-  white-space: nowrap;
+.tab-label-text {
+  max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-right: 6px;
+  white-space: nowrap;
 }
 
-.tab-input {
+.tab-close-btn {
+  margin-left: 10px;
+  font-size: 16px;
+  color: #c0c4cc;
+}
+.tab-close-btn:hover { color: #f56c6c; }
+
+.add-tab-btn {
   border: none;
-  background: transparent;
-  font-size: 13px;
-  width: 100%;
-  outline: none;
-  color: #0366d6;
+  background: none;
+  font-size: 20px;
+  color: #909399;
+  cursor: pointer;
+  padding: 0 10px;
 }
 
-.tab-close-icon {
-  font-size: 14px;
-  color: #d1d5da;
-  border-radius: 4px;
-  width: 16px;
-  height: 16px;
+/* 3. 编辑器主体：强制纵向拉伸 */
+.editor-content-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* 防止内容撑破 flex 容器 */
+}
+
+/* 强制覆盖 ByteMD 内部的所有高度限制 */
+.bytemd-instance-override :deep(.bytemd) {
+  height: 100% !important;
+  border: none;
+}
+
+.bytemd-instance-override :deep(.bytemd-main) {
+  height: calc(100% - 40px) !important; /* 减去工具栏高度 */
+}
+
+.bytemd-instance-override :deep(.bytemd-editor),
+.bytemd-instance-override :deep(.bytemd-preview) {
+  height: 100% !important;
+}
+
+/* 隐藏特定的工具栏图标 */
+.bytemd-instance-override :deep(.bytemd-toolbar-icon.bytemd-tippy-right[bytemd-tippy-path="5"]),
+.bytemd-instance-override :deep(.bytemd-toolbar-icon:has(svg path[d*="29.344 30.477"])) {
+  display: none !important;
+}
+
+/* TODO /
+
+ */
+   /* 1. 顶层容器高度计算 */
+ .editor-fullscreen-container {
+   display: flex;
+   flex-direction: column;
+   /* 这里的高度要根据你的顶栏高度微调，确保不出现页面滚动条 */
+   height: calc(100vh - 120px);
+   background: #fff;
+   border: 1px solid #ebeef5;
+   border-radius: 4px;
+   overflow: hidden;
+   margin: -10px -10px 0 -10px;
+ }
+
+/* 2. 编辑器主体撑满中间 */
+.editor-content-area {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.bytemd-instance-override :deep(.bytemd) {
+  height: 100% !important;
+  width: 100%;
+}
+
+/* 3. 底部操作栏样式 */
+.editor-footer {
+  padding: 12px 16px;
+  background: #fff;
+  border-top: 1px solid #ebeef5;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.action-group {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.bottom-row {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px dashed #f0f2f5;
+}
+
+/* 之前提供的标签栏相关 CSS 保持不变... */
+.tabs-header-bar {
   display: flex;
   align-items: center;
-  justify-content: center;
-}
-
-.tab-close-icon:hover {
-  background: #e1e4e8;
-  color: #586069;
-}
-
-.add-btn {
-  border: none;
-  background: transparent;
-  font-size: 18px;
-  color: #586069;
-  cursor: pointer;
-  padding: 0 8px;
-  line-height: 1;
-}
-
-.add-btn:hover { color: #0366d6; }
-
-/* 编辑器区域撑满剩余空间 */
-.editor-wrapper {
-  flex: 1;
-  border-top: 1px solid #e1e4e8;
-  z-index: 1;
-}
-
-.custom-bytemd :deep(.bytemd) {
-  height: 100%;
-  border: none;
-}
-
-/* 隐藏 GitHub 源码图标 (引用自 cite: 1) */
-.custom-bytemd :deep(.bytemd-toolbar-icon.bytemd-tippy-right[bytemd-tippy-path="5"]),
-.custom-bytemd :deep(.bytemd-toolbar-icon:has(svg path[d*="29.344 30.477"])) {
-  display: none !important;
+  background: #f5f7fa;
+  padding: 8px 12px 0;
+  border-bottom: 1px solid #ebeef5;
 }
 </style>
