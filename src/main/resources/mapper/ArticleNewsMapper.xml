@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.product.mapper.ArticleNewsMapper">
+
+    <resultMap id="BaseResultMap" type="com.product.entity.ArticleNews">
+        <id column="id" property="id" jdbcType="VARCHAR"/>
+        <result column="create_by" property="createBy" jdbcType="VARCHAR"/>
+        <result column="create_time" property="createTime" jdbcType="TIMESTAMP"/>
+        <result column="update_by" property="updateBy" jdbcType="VARCHAR"/>
+        <result column="update_time" property="updateTime" jdbcType="TIMESTAMP"/>
+        <result column="sys_org_code" property="sysOrgCode" jdbcType="VARCHAR"/>
+        <result column="remark" property="remark" jdbcType="VARCHAR"/>
+        <result column="del_flag" property="delFlag" jdbcType="INTEGER"/>
+        <result column="source" property="source" jdbcType="VARCHAR"/>
+        <result column="title" property="title" jdbcType="VARCHAR"/>
+        <result column="content" property="content" jdbcType="VARCHAR"/>
+        <result column="url" property="url" jdbcType="VARCHAR"/>
+        <result column="pic" property="pic" jdbcType="VARCHAR"/>
+        <result column="hot" property="hot" jdbcType="INTEGER"/>
+        <result column="type" property="type" jdbcType="VARCHAR"/>
+        <result column="news_date" property="newsDate" jdbcType="TIMESTAMP"/>
+        <result column="media" property="media" jdbcType="VARCHAR"/>
+        <result column="pic_count" property="picCount" jdbcType="INTEGER"/>
+        <result column="pic_list" property="picList" jdbcType="VARCHAR"/>
+        <result column="word_num" property="wordNum" jdbcType="INTEGER"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, create_by, create_time, update_by, update_time, sys_org_code, remark, del_flag, source, title, content, url, pic, hot, type, news_date, media, pic_count, pic_list, word_num
+    </sql>
+
+    <select id="selectById" parameterType="string" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM article_news
+        WHERE id = #{id}
+    </select>
+
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM article_news
+        ORDER BY id DESC
+    </select>
+
+    <select id="selectByPage" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM article_news
+        ORDER BY id DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countTotal" resultType="integer">
+        SELECT COUNT(*)
+        FROM article_news
+    </select>
+
+    <insert id="insert" parameterType="com.product.entity.ArticleNews">
+        INSERT INTO article_news
+        (id, create_by, create_time, update_by, update_time, sys_org_code, remark, del_flag, source, title, content, url, pic, hot, type, news_date, media, pic_count, pic_list, word_num)
+        VALUES (#{id,jdbcType=VARCHAR}, #{createBy,jdbcType=VARCHAR}, #{createTime,jdbcType=TIMESTAMP}, #{updateBy,jdbcType=VARCHAR}, #{updateTime,jdbcType=TIMESTAMP}, #{sysOrgCode,jdbcType=VARCHAR}, #{remark,jdbcType=VARCHAR}, #{delFlag,jdbcType=INTEGER}, #{source,jdbcType=VARCHAR}, #{title,jdbcType=VARCHAR}, #{content,jdbcType=VARCHAR}, #{url,jdbcType=VARCHAR}, #{pic,jdbcType=VARCHAR}, #{hot,jdbcType=INTEGER}, #{type,jdbcType=VARCHAR}, #{newsDate,jdbcType=TIMESTAMP}, #{media,jdbcType=VARCHAR}, #{picCount,jdbcType=INTEGER}, #{picList,jdbcType=VARCHAR}, #{wordNum,jdbcType=INTEGER})
+    </insert>
+
+    <update id="update" parameterType="com.product.entity.ArticleNews">
+        UPDATE article_news
+        SET
+            create_by = #{createBy,jdbcType=VARCHAR},
+            create_time = #{createTime,jdbcType=TIMESTAMP},
+            update_by = #{updateBy,jdbcType=VARCHAR},
+            update_time = #{updateTime,jdbcType=TIMESTAMP},
+            sys_org_code = #{sysOrgCode,jdbcType=VARCHAR},
+            remark = #{remark,jdbcType=VARCHAR},
+            del_flag = #{delFlag,jdbcType=INTEGER},
+            source = #{source,jdbcType=VARCHAR},
+            title = #{title,jdbcType=VARCHAR},
+            content = #{content,jdbcType=VARCHAR},
+            url = #{url,jdbcType=VARCHAR},
+            pic = #{pic,jdbcType=VARCHAR},
+            hot = #{hot,jdbcType=INTEGER},
+            type = #{type,jdbcType=VARCHAR},
+            news_date = #{newsDate,jdbcType=TIMESTAMP},
+            media = #{media,jdbcType=VARCHAR},
+            pic_count = #{picCount,jdbcType=INTEGER},
+            pic_list = #{picList,jdbcType=VARCHAR},
+            word_num = #{wordNum,jdbcType=INTEGER}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById" parameterType="string">
+        DELETE FROM article_news
+        WHERE id = #{id}
+    </delete>
+
+    <select id="selectByPageWithSearch" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM article_news
+        <where>
+            <if test="title != null and title != ''">
+                AND title LIKE CONCAT('%', #{title}, '%')
+            </if>
+        </where>
+        ORDER BY id DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countTotalWithSearch" resultType="integer">
+        SELECT COUNT(*)
+        FROM article_news
+        <where>
+            <if test="title != null and title != ''">
+                AND title LIKE CONCAT('%', #{title}, '%')
+            </if>
+        </where>
+    </select>
+
+</mapper>

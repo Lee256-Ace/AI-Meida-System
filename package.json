@@ -1,0 +1,13 @@
+{
+  "name": "baseservertest",
+  "version": "1.0.0",
+  "description": "一个基于SpringBoot3 + Vue3的商品点单管理系统，支持管理员和商家两种角色。",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}
