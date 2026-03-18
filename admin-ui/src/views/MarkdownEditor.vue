@@ -42,11 +42,13 @@
       <div class="action-group top-row">
         <el-button type="success" size="small" plain icon="MagicStick">美化此篇</el-button>
         <el-button type="warning" size="small" plain icon="EditPen">续写此篇</el-button>
-        <el-button type="info" size="small" plain icon="VideoPlay">开始编辑</el-button>
+        <el-button type="info" size="small" plain icon="VideoPlay">开始生成</el-button>
       </div>
       <div class="action-group bottom-row">
-        <el-button type="primary" link icon="DocumentCopy" @click="copyAll">复制全部</el-button>
-        <el-button type="primary" link icon="Download" @click="downloadAll">下载全部</el-button>
+        <el-button type="primary" link icon="DocumentCopy" @click="copyAll">复制文案</el-button>
+        <el-button type="primary" link icon="Download" @click="downloadAll">下载文案</el-button>
+<!--        TODO 增加保存入MySQL的前后端功能-->
+        <el-button type="primary" link icon="EditPen" @click=" ">保存文案</el-button>
       </div>
     </div>
   </div>
@@ -62,6 +64,7 @@ import math from '@bytemd/plugin-math'
 import mermaid from '@bytemd/plugin-mermaid'
 import zhHans from 'bytemd/locales/zh_Hans.json'
 import { MagicStick, EditPen, VideoPlay, DocumentCopy, Download } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 
 import 'bytemd/dist/index.css'
 import 'katex/dist/katex.css'
@@ -101,17 +104,70 @@ const handleChange = (v) => {
   if (tab) tab.content = v
 }
 
-/* TODO/
+/* TODO// 完善将编辑区的文案投送到文案生成、文章续写、文章美化的功能
    示例
 
  */
 
-const copyAll = () => {
-  navigator.clipboard.writeText(activeTabContent.value)
-  // ElMessage.success('已复制到剪贴板')
-}
 const downloadAll = () => {
-  console.log('执行下载:', activeTabId.value)
+  // 1. 获取当前激活的标签对象
+  const currentTab = tabs.value.find(t => t.id === activeTabId.value)
+
+  if (!currentTab || !currentTab.content) {
+    // 如果没有内容，可以弹窗提醒 (假设你使用了 Element Plus 的 ElMessage)
+    // ElMessage.warning('当前篇章没有内容可以下载')
+    return
+  }
+
+  // 2. 创建 Blob 对象 (类文件对象)
+  // 指定类型为 text/markdown 或 text/plain
+  const blob = new Blob([currentTab.content], { type: 'text/markdown' })
+
+  // 3. 创建下载链接
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+
+  // 4. 设置文件名 (使用标签页的标题)
+  link.href = url
+  link.download = `${currentTab.title || '未命名文档'}.md`
+
+  // 5. 触发点击并清理
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url) // 释放内存
+}
+/**
+ * 复制当前编辑区的文案
+ */
+const copyAll = async () => {
+  // 1. 获取当前正在编辑的标签页对象
+  const currentTab = tabs.value.find(t => t.id === activeTabId.value)
+
+  // 2. 检查是否有内容
+  if (!currentTab || !currentTab.content.trim()) {
+    ElMessage.warning({
+      message: '当前篇章内容为空，无法复制',
+      grouping: true // 防止重复点击弹出多个消息
+    })
+    return
+  }
+
+  try {
+    // 3. 执行写入剪贴板
+    await navigator.clipboard.writeText(currentTab.content)
+
+    // 4. 成功反馈
+    ElMessage.success({
+      message: `已成功复制《${currentTab.title}》全文`,
+      duration: 2000, // 2秒后自动消失
+      showClose: true
+    })
+  } catch (err) {
+    // 5. 失败反馈（例如浏览器安全限制）
+    console.error('复制出错:', err)
+    ElMessage.error('复制失败，请尝试手动选中复制')
+  }
 }
 
 </script>
