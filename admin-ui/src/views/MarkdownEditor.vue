@@ -56,7 +56,7 @@
 
 <script setup>
 // ... (script 逻辑保持不变，确保 vFocus 指令存在)
-import { ref, computed } from 'vue'
+import {ref, computed, onMounted, onBeforeUnmount} from 'vue'
 import { Editor } from '@bytemd/vue-next'
 import gfm from '@bytemd/plugin-gfm'
 import highlight from '@bytemd/plugin-highlight'
@@ -65,11 +65,13 @@ import mermaid from '@bytemd/plugin-mermaid'
 import zhHans from 'bytemd/locales/zh_Hans.json'
 import { MagicStick, EditPen, VideoPlay, DocumentCopy, Download } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import { useMarkdownCacheStore } from '@/stores/markDownCache'
 
 import 'bytemd/dist/index.css'
 import 'katex/dist/katex.css'
 import 'highlight.js/styles/github.css'
 
+const cacheStore = useMarkdownCacheStore()
 const vFocus = { mounted: (el) => el.focus() }
 const props = defineProps({ placeholder: { type: String, default: '开始创作...' } })
 
@@ -105,8 +107,8 @@ const handleChange = (v) => {
 }
 
 /* TODO// 完善将编辑区的文案投送到文案生成、文章续写、文章美化的功能
-   示例
-
+ * 示例
+ *
  */
 
 const downloadAll = () => {
@@ -170,26 +172,66 @@ const copyAll = async () => {
   }
 }
 
+// 1. 页面挂载时：从 Store 恢复数据
+onMounted(() => {
+  if (cacheStore.tabs.length > 0) {
+    // 如果 Store 里有暂存的数据，直接读取
+    tabs.value = [...cacheStore.tabs]
+    activeTabId.value = cacheStore.activeTabId
+  }
+})
+
+// 2. 页面卸载（切换路由）前：将当前状态存入 Store
+onBeforeUnmount(() => {
+  // 就像实例代码中那样，离开前“锁死”当前进度
+  cacheStore.saveEditorState(tabs.value, activeTabId.value)
+})
+
 </script>
 
 <style scoped>
-/* 1. 顶层容器：强制减去外部 Padding 的影响 */
+/* 整个编辑组件的包裹容器 */
 .editor-fullscreen-container {
   display: flex;
   flex-direction: column;
-  /* 关键：视口高度减去外部导航栏的高度（根据你的实际情况调整） */
-  height: calc(100vh - 140px);
+  height: calc(100vh - 160px); /* 根据你的页面顶部高度微调 */
   background: #fff;
   border: 1px solid #ebeef5;
   border-radius: 4px;
-  overflow: hidden;
-  /* 抵消父级 .app-container 可能存在的 padding 影响 */
-  margin: -10px -10px 0 -10px;
+  overflow: hidden; /* 严禁外溢 */
+  margin: 0;
 }
 
-/* 2. 标签栏：适配你实例中的 Element 风格色彩 */
-.tabs-header-bar {
+/* 中间编辑区域 */
+.editor-content-area {
+  flex: 1;
+  min-height: 0; /* 解决 Flex 容器被内容撑开的经典 Bug */
+  max-height: 100%;
+  overflow-y: auto;
   display: flex;
+  border-bottom: 1px solid #ebeef5;
+}
+
+/* 深度穿透 ByteMD */
+.bytemd-instance-override :deep(.bytemd) {
+  height: 100% !important;
+  width: 100% !important;
+}
+
+/* 底部操作栏（固定在最下方） */
+.editor-footer {
+  height: auto;
+  padding: 12px 16px;
+  background: #fff;
+  flex-shrink: 0; /* 确保操作栏不会因为编辑器太大而被挤扁 */
+  z-index: 10;
+}
+
+/* 标签栏 */
+.tabs-header-bar {
+  flex-shrink: 0; /* 确保标签栏高度固定 */
+  background: #f5f7fa;
+  /*display: flex;
   align-items: center;
   background: #f5f7fa; /* 匹配 .reasoning-box 的背景色 */
   padding: 8px 12px 0;
@@ -289,15 +331,14 @@ const copyAll = async () => {
    margin: -10px -10px 0 -10px;
  }
 
-/* 2. 编辑器主体撑满中间 */
-.editor-content-area {
-  flex: 1;
-  display: flex;
-  min-height: 0;
-}
 .bytemd-instance-override :deep(.bytemd) {
   height: 100% !important;
   width: 100%;
+}
+
+  /* 全屏时置于最顶层，确保工具栏和「退出全屏」按钮可见、可点击 */
+.editor-fullscreen-container :deep(.bytemd-fullscreen.bytemd) {
+  z-index: 9999;
 }
 
 /* 3. 底部操作栏样式 */

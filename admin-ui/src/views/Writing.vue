@@ -346,7 +346,7 @@ const useForContinue = (block) => {
 }
 
 onMounted(() => {
-  const c = cacheStore.writing
+  const c =  .writing
   if (c.form.prompt || c.result.content || c.result.show) {
     genForm.prompt = c.form.prompt
     genForm.platforms = c.form.platforms.length ? [...c.form.platforms] : ['douyin', 'xiaohongshu', 'video_account', 'toutiao']
