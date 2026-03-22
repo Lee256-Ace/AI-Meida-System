@@ -69,3 +69,15 @@ END//
 DELIMITER ;
 CALL add_platform_columns_if_missing();
 DROP PROCEDURE IF EXISTS add_platform_columns_if_missing;
+
+-- ------------------------------------------------------------
+-- 4. Markdown 编辑器保存表
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ai_markdown_copy (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    title VARCHAR(255) NOT NULL DEFAULT '未命名' COMMENT '文档标题',
+    content LONGTEXT NOT NULL COMMENT 'Markdown 正文',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_updated_at (updated_at)
+) COMMENT 'Markdown 文案草稿/已保存副本';

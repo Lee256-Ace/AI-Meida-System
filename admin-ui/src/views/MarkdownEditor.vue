@@ -47,8 +47,7 @@
       <div class="action-group bottom-row">
         <el-button type="primary" link icon="DocumentCopy" @click="copyAll">复制文案</el-button>
         <el-button type="primary" link icon="Download" @click="downloadAll">下载文案</el-button>
-<!--        TODO 增加保存入MySQL的前后端功能-->
-        <el-button type="primary" link icon="EditPen" @click=" ">保存文案</el-button>
+        <el-button type="primary" link icon="EditPen" :loading="saveLoading" @click="saveCopy">保存文案</el-button>
       </div>
     </div>
   </div>
@@ -66,6 +65,7 @@ import zhHans from 'bytemd/locales/zh_Hans.json'
 import { MagicStick, EditPen, VideoPlay, DocumentCopy, Download } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useMarkdownCacheStore } from '@/stores/markDownCache'
+import { saveMarkdownCopy } from '@/api/markdownCopy'
 
 import 'bytemd/dist/index.css'
 import 'katex/dist/katex.css'
@@ -76,9 +76,10 @@ const vFocus = { mounted: (el) => el.focus() }
 const props = defineProps({ placeholder: { type: String, default: '开始创作...' } })
 
 const tabs = ref([
-  { id: 1, title: '新建文档 1', content: '# 营销文案\n\n在此编写...\n\n\n\n\n\n\n\n\n\n', isEditing: false }
+  { id: 1, title: '新建文档 1', content: '# 营销文案\n\n在此编写...\n\n\n\n\n\n\n\n\n\n', isEditing: false, savedCopyId: null }
 ])
 const activeTabId = ref(1)
+const saveLoading = ref(false)
 const plugins = [gfm(), highlight(), math(), mermaid()]
 
 const activeTabContent = computed(() => {
@@ -90,7 +91,7 @@ const doneEdit = (tab) => { tab.isEditing = false; if (!tab.title.trim()) tab.ti
 
 const addTab = () => {
   const newId = Date.now()
-  tabs.value.push({ id: newId, title: `新建文档 ${tabs.value.length + 1}`, content: '# 营销文案\n\n在此编写...\n\n\n\n\n\n\n\n\n\n', isEditing: false })
+  tabs.value.push({ id: newId, title: `新建文档 ${tabs.value.length + 1}`, content: '# 营销文案\n\n在此编写...\n\n\n\n\n\n\n\n\n\n', isEditing: false, savedCopyId: null })
   activeTabId.value = newId
 }
 
@@ -142,6 +143,38 @@ const downloadAll = () => {
 /**
  * 复制当前编辑区的文案
  */
+/** 将当前标签 Markdown 保存到 MySQL（ai_markdown_copy），同一标签再次保存为更新 */
+const saveCopy = async () => {
+  const currentTab = tabs.value.find(t => t.id === activeTabId.value)
+  if (!currentTab || !currentTab.content.trim()) {
+    ElMessage.warning({ message: '当前篇章内容为空，无法保存', grouping: true })
+    return
+  }
+  saveLoading.value = true
+  try {
+    const payload = {
+      title: currentTab.title || '未命名',
+      content: currentTab.content
+    }
+    if (currentTab.savedCopyId != null) {
+      payload.id = currentTab.savedCopyId
+    }
+    const res = await saveMarkdownCopy(payload)
+    if (res && res.id != null) {
+      currentTab.savedCopyId = res.id
+      ElMessage.success({
+        message: `已保存到数据库（#${res.id}）`,
+        duration: 2000,
+        showClose: true
+      })
+    }
+  } catch {
+    // 错误提示由 request 拦截器处理
+  } finally {
+    saveLoading.value = false
+  }
+}
+
 const copyAll = async () => {
   // 1. 获取当前正在编辑的标签页对象
   const currentTab = tabs.value.find(t => t.id === activeTabId.value)
@@ -175,8 +208,10 @@ const copyAll = async () => {
 // 1. 页面挂载时：从 Store 恢复数据
 onMounted(() => {
   if (cacheStore.tabs.length > 0) {
-    // 如果 Store 里有暂存的数据，直接读取
-    tabs.value = [...cacheStore.tabs]
+    tabs.value = cacheStore.tabs.map((t) => ({
+      ...t,
+      savedCopyId: t.savedCopyId != null ? t.savedCopyId : null
+    }))
     activeTabId.value = cacheStore.activeTabId
   }
 })
