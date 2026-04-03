@@ -81,3 +81,45 @@ CREATE TABLE IF NOT EXISTS ai_markdown_copy (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_updated_at (updated_at)
 ) COMMENT 'Markdown 文案草稿/已保存副本';
+
+-- ------------------------------------------------------------
+-- 5. users 表：普通用户（admins 表仅管理员）
+--    - 创建 users 表（若不存在）
+--    - 将 admins 中 username <> 'admin' 的记录迁移到 users（避免重复）
+--    - 迁移后从 admins 删除非 admin 记录（符合“admin 仅存管理员”）
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) NOT NULL COMMENT '用户名',
+    password VARCHAR(100) NOT NULL COMMENT '密码',
+    real_name VARCHAR(50) NULL DEFAULT NULL COMMENT '真实姓名',
+    phone VARCHAR(20) NULL DEFAULT NULL COMMENT '手机号',
+    email VARCHAR(100) NULL DEFAULT NULL COMMENT '邮箱',
+    avatar VARCHAR(200) NULL DEFAULT NULL COMMENT '头像',
+    status TINYINT(4) NULL DEFAULT 1 COMMENT '状态(0:禁用 1:正常)',
+    created_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    UNIQUE INDEX uk_username (username)
+) COMMENT '普通用户表';
+
+-- 迁移非 admin 记录
+INSERT INTO users (username, password, real_name, phone, email, avatar, status, created_at, updated_at)
+SELECT
+    a.username,
+    a.password,
+    a.real_name,
+    a.phone,
+    a.email,
+    a.avatar,
+    a.status,
+    a.created_at,
+    a.updated_at
+FROM admins a
+WHERE a.username <> 'admin'
+  AND NOT EXISTS (SELECT 1 FROM users u WHERE u.username = a.username);
+
+-- 清理 admins 中非 admin 记录
+DELETE FROM admins
+WHERE username <> 'admin'
+  AND EXISTS SELECT 1 FROM users u WHERE u.username = admins.username);
+

@@ -24,4 +24,13 @@ export function logout() {
     url: '/auth/logout',
     method: 'post'
   })
-} 
+}
+
+/** 注册普通用户（公开接口，无需登录） */
+export function registerNormalUser(data) {
+  return request({
+    url: '/auth/register/user',
+    method: 'post',
+    data
+  })
+}

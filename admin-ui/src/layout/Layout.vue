@@ -64,6 +64,56 @@
           <span>网络热点素材</span>
         </el-menu-item>
 
+        <el-menu-item index="/user-management">
+          <el-icon><UserFilled /></el-icon>
+          <span>用户管理</span>
+        </el-menu-item>
+
+        <el-menu-item index="/markdownEdit">
+          <el-icon><Document /></el-icon>
+          <span>编辑文案</span>
+        </el-menu-item>
+      </el-menu>
+
+      <!-- 普通用户 / 商家：不包含系统管理类菜单 -->
+      <el-menu
+        v-else
+        :default-active="$route.path"
+        router
+        background-color="#8B4513"
+        text-color="#fff"
+        active-text-color="#FFA500"
+      >
+        <el-sub-menu index="/ai-writing">
+          <template #title>
+            <el-icon><MagicStick /></el-icon>
+            <span>AI 文案生成</span>
+          </template>
+          <el-menu-item index="/ai-writing/generate">
+            <el-icon><EditPen /></el-icon>
+            <span>文案生成</span>
+          </el-menu-item>
+          <el-menu-item index="/ai-writing/polish">
+            <el-icon><Brush /></el-icon>
+            <span>文章美化</span>
+          </el-menu-item>
+          <el-menu-item index="/ai-writing/continue">
+            <el-icon><DocumentAdd /></el-icon>
+            <span>文章续写</span>
+          </el-menu-item>
+          <el-menu-item index="/ai-writing/history">
+            <el-icon><Clock /></el-icon>
+            <span>生成历史</span>
+          </el-menu-item>
+        </el-sub-menu>
+        <el-menu-item index="/articlePlatform">
+          <el-icon><Document /></el-icon>
+          <span>文章平台管理</span>
+        </el-menu-item>
+        <el-menu-item index="/articleNews">
+          <el-icon><Document /></el-icon>
+          <span>网络热点素材</span>
+        </el-menu-item>
         <el-menu-item index="/markdownEdit">
           <el-icon><Document /></el-icon>
           <span>编辑文案</span>
@@ -87,6 +137,7 @@
             </span>
             <template #dropdown>
               <el-dropdown-menu>
+                <el-dropdown-item command="personal">个人中心</el-dropdown-item>
                 <el-dropdown-item command="logout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -112,7 +163,9 @@ import {
   Brush,
   DocumentAdd,
   EditPen,
-  Clock
+  Clock,
+  UserFilled,
+  Document
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
@@ -126,11 +179,20 @@ const getCurrentPageTitle = () => {
     '/ai-writing/polish': '文章美化',
     '/ai-writing/continue': '文章续写',
     '/ai-writing/history': '生成历史',
+    '/user-management': '用户管理',
+    '/user-center': '个人中心',
+    '/markdownEdit': '编辑文案',
+    '/articlePlatform': '文章平台管理',
+    '/articleNews': '网络热点素材'
   }
   return routeMap[router.currentRoute.value.path] || '页面'
 }
 
 const handleCommand = async (command) => {
+  if (command === 'personal') {
+    router.push('/user-center')
+    return
+  }
   if (command === 'logout') {
     await userStore.logoutAction()
     ElMessage.success('退出登录成功')

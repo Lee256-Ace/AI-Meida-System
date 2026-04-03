@@ -23,6 +23,7 @@ public class HistoryService {
     private final GenerationMapper generationMapper;
     private final PolishMapper polishMapper;
     private final ContinuationMapper continuationMapper;
+    private final MarkdownCopyMapper markdownCopyMapper;
 
     /**
      * 查询统一历史记录
@@ -39,6 +40,9 @@ public class HistoryService {
         }
         if ("all".equals(param.getType()) || "continue".equals(param.getType())) {
             allRecords.addAll(queryContinueHistory(param));
+        }
+        if ("all".equals(param.getType()) || "markdown".equals(param.getType())) {
+            allRecords.addAll(queryMarkdownHistory(param));
         }
 
         // 状态筛选
@@ -110,6 +114,7 @@ public class HistoryService {
             case "generate" -> generationMapper.selectById(id);
             case "polish" -> polishMapper.selectById(id);
             case "continue" -> continuationMapper.selectById(id);
+            case "markdown" -> markdownCopyMapper.selectById(id);
             default -> null;
         };
     }
@@ -122,6 +127,7 @@ public class HistoryService {
             case "generate" -> generationMapper.deleteById(id);
             case "polish" -> polishMapper.deleteById(id);
             case "continue" -> continuationMapper.deleteById(id);
+            case "markdown" -> markdownCopyMapper.deleteById(id);
             default -> 0;
         };
         return result > 0;
@@ -151,17 +157,20 @@ public class HistoryService {
         vo.setGenerateCount(generationMapper.count());
         vo.setPolishCount(polishMapper.count());
         vo.setContinueCount(continuationMapper.count());
-        vo.setTotalCount(vo.getGenerateCount() + vo.getPolishCount() + vo.getContinueCount());
+        long markdownCount = safeLong(markdownCopyMapper.count());
+        vo.setTotalCount(vo.getGenerateCount() + vo.getPolishCount() + vo.getContinueCount() + markdownCount);
 
         // 今日新增
         vo.setTodayCount(generationMapper.countToday() +
                 polishMapper.countToday() +
-                continuationMapper.countToday());
+                continuationMapper.countToday() +
+                safeLong(markdownCopyMapper.countToday()));
 
         // 总字数
         vo.setTotalWords(generationMapper.sumWords() +
                 polishMapper.sumWords() +
-                continuationMapper.sumWords());
+                continuationMapper.sumWords() +
+                safeLong(markdownCopyMapper.sumWords()));
 
         return vo;
     }
@@ -181,6 +190,11 @@ public class HistoryService {
     private List<HistoryRecordVO> queryContinueHistory(HistoryQueryParam param) {
         List<ContinuationTask> list = continuationMapper.selectAll();
         return list.stream().map(this::convertContinue).collect(Collectors.toList());
+    }
+
+    private List<HistoryRecordVO> queryMarkdownHistory(HistoryQueryParam param) {
+        List<MarkdownCopy> list = markdownCopyMapper.selectAll();
+        return list.stream().map(this::convertMarkdown).collect(Collectors.toList());
     }
 
     private HistoryRecordVO convertGeneration(GenerationTask task) {
@@ -237,6 +251,26 @@ public class HistoryService {
         vo.setTimeAgo(calculateTimeAgo(task.getCreatedAt()));
         vo.setWordCount(task.getTotalLength());
         return vo;
+    }
+
+    private HistoryRecordVO convertMarkdown(MarkdownCopy row) {
+        HistoryRecordVO vo = new HistoryRecordVO();
+        vo.setId(row.getId());
+        vo.setType("markdown");
+        vo.setTypeName("保存文案");
+        vo.setTitle(truncate(row.getTitle(), 50));
+        vo.setPreview(truncate(row.getContent(), 100));
+        vo.setStatus("completed");
+        vo.setStatusName("已保存");
+        LocalDateTime time = row.getUpdatedAt() != null ? row.getUpdatedAt() : row.getCreatedAt();
+        vo.setCreatedAt(time);
+        vo.setTimeAgo(calculateTimeAgo(time));
+        vo.setWordCount(row.getContent() != null ? row.getContent().length() : 0);
+        return vo;
+    }
+
+    private Long safeLong(Long value) {
+        return value != null ? value : 0L;
     }
 
     private String convertStatus(Integer status) {

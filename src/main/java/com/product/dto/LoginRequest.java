@@ -14,7 +14,7 @@ public class LoginRequest {
     private String password;
     
     @NotBlank(message = "用户类型不能为空")
-    private String userType; // admin, merchant, user
+    private String userType; // admin, user
     
     public LoginRequest() {}
     

@@ -19,7 +19,7 @@
             @keyup.enter="doneEdit(tab)"
             @click.stop
         />
-        <span v-else class="tab-label-text">{{ tab.title || '新文档' }}</span>
+        <span v-else class="tab-label-text">{{ tab.title   || '新文档' }}</span>
         <span class="tab-close-btn" @click.stop="removeTab(index)">×</span>
       </div>
       <button class="add-tab-btn" @click="addTab">+</button>
@@ -40,9 +40,33 @@
     <!-- 3. 左下角功能操作栏 -->
     <div class="editor-footer">
       <div class="action-group top-row">
-        <el-button type="success" size="small" plain icon="MagicStick">美化此篇</el-button>
-        <el-button type="warning" size="small" plain icon="EditPen">续写此篇</el-button>
-        <el-button type="info" size="small" plain icon="VideoPlay">开始生成</el-button>
+        <el-button
+            type="success"
+            size="small"
+            plain
+            icon="MagicStick"
+            @click="goPolish"
+        >
+          美化此篇
+        </el-button>
+        <el-button
+            type="warning"
+            size="small"
+            plain
+            icon="EditPen"
+            @click="goContinue"
+        >
+          续写此篇
+        </el-button>
+        <el-button
+            type="info"
+            size="small"
+            plain
+            icon="VideoPlay"
+            @click="goGenerate"
+        >
+          文案生成
+        </el-button>
       </div>
       <div class="action-group bottom-row">
         <el-button type="primary" link icon="DocumentCopy" @click="copyAll">复制文案</el-button>
@@ -54,8 +78,8 @@
 </template>
 
 <script setup>
-// ... (script 逻辑保持不变，确保 vFocus 指令存在)
 import {ref, computed, onMounted, onBeforeUnmount} from 'vue'
+import { useRouter } from 'vue-router'
 import { Editor } from '@bytemd/vue-next'
 import gfm from '@bytemd/plugin-gfm'
 import highlight from '@bytemd/plugin-highlight'
@@ -72,6 +96,7 @@ import 'katex/dist/katex.css'
 import 'highlight.js/styles/github.css'
 
 const cacheStore = useMarkdownCacheStore()
+const router = useRouter()
 const vFocus = { mounted: (el) => el.focus() }
 const props = defineProps({ placeholder: { type: String, default: '开始创作...' } })
 
@@ -107,10 +132,288 @@ const handleChange = (v) => {
   if (tab) tab.content = v
 }
 
-/* TODO// 完善将编辑区的文案投送到文案生成、文章续写、文章美化的功能
- * 示例
- *
- */
+const getActiveTab = () => tabs.value.find(t => t.id === activeTabId.value)
+
+/** 跳转到文章美化，并把当前标签页内容带过去 */
+const goPolish = () => {
+  const tab = getActiveTab()
+  const content = tab?.content?.trim()
+  if (!content) {
+    ElMessage.warning('当前篇章为空，无法跳转到文章美化')
+    return
+  }
+  router.push({
+    path: '/ai-writing/polish',
+    query: { content: encodeURIComponent(content) }
+  })
+}
+
+/** 跳转到文章续写，并把当前标签页内容带过去 */
+const goContinue = () => {
+  const tab = getActiveTab()
+  const content = tab?.content?.trim()
+  if (!content) {
+    ElMessage.warning('当前篇章为空，无法跳转到文章续写')
+    return
+  }
+  router.push({
+    path: '/ai-writing/continue',
+    query: { content: encodeURIComponent(content) }
+  })
+}
+
+/** 跳转到文案生成，并把当前标签页内容作为 prompt 带过去 */
+const goGenerate = () => {
+  const tab = getActiveTab()
+  const prompt = tab?.content?.trim()
+  if (!prompt) {
+    ElMessage.warning('当前篇章为空，无法跳转到文案生成')
+    return
+  }
+  router.push({
+    path: '/ai-writing/generate',
+    query: { prompt: encodeURIComponent(prompt) }
+  })
+}
+
+/** 把当前标签页内容当作 prompt，让 AI 直接覆盖当前标签页正文 */
+const generateThis = async () => {
+  if (generateLoading.value || polishLoading.value || continueLoading.value) return
+
+  const tabId = activeTabId.value
+  const tab = tabs.value.find(t => t.id === tabId)
+  const prompt = tab?.content?.trim()
+  if (!prompt) {
+    ElMessage.warning('当前篇章为空，无法开始生成')
+    return
+  }
+
+  // 清空并开始写入流式结果
+  if (genEventSource) {
+    try { genEventSource.close() } catch (_) {}
+  }
+
+  generateLoading.value = true
+  tab.content = ''
+
+  let taskId = null
+  genEventSource = generateStream({
+    prompt,
+    platforms: ['douyin', 'xiaohongshu', 'video_account', 'toutiao'],
+    targetAudience: undefined
+  })
+
+  genEventSource.addEventListener('taskId', (e) => {
+    taskId = parseInt(e.data, 10)
+  })
+
+  genEventSource.addEventListener('content', (e) => {
+    const t = tabs.value.find(x => x.id === tabId)
+    if (t) t.content += e.data
+  })
+
+  genEventSource.addEventListener('complete', async () => {
+    generateLoading.value = false
+    try {
+      if (typeof taskId === 'number' && !Number.isNaN(taskId)) {
+        const res = await getGenerationTask(taskId)
+        const t = tabs.value.find(x => x.id === tabId)
+        if (t && res && res.content) t.content = res.content
+      }
+    } catch (_) {
+      // ignore：不影响已流式写入的内容
+    } finally {
+      try { genEventSource.close() } catch (_) {}
+      genEventSource = null
+    }
+    ElMessage.success('生成完成')
+  })
+
+  genEventSource.addEventListener('error', () => {
+    generateLoading.value = false
+    try { genEventSource.close() } catch (_) {}
+    genEventSource = null
+    ElMessage.error('生成失败')
+  })
+}
+
+/** 美化：把当前标签页正文当作原文，流式覆盖为美化结果 */
+const polishThis = async () => {
+  if (polishLoading.value || generateLoading.value || continueLoading.value) return
+
+  const tabId = activeTabId.value
+  const tab = tabs.value.find(t => t.id === tabId)
+  const originalContent = tab?.content?.trim()
+  if (!originalContent) {
+    ElMessage.warning('当前篇章为空，无法美化')
+    return
+  }
+
+  polishLoading.value = true
+  tab.content = ''
+
+  let taskId = null
+  let finished = false
+
+  try {
+    const response = await polishStream({
+      content: originalContent,
+      type: 'enhance',
+      targetAudience: '大众',
+      platform: undefined
+    })
+
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error('No response.body')
+
+    const decoder = new TextDecoder()
+    let lastEvent = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      const text = decoder.decode(value)
+      const lines = text.split('\n')
+      lines.forEach(line => {
+        if (finished) return
+
+        if (line.startsWith('event:')) {
+          lastEvent = line.slice(6).trim()
+        } else if (line.startsWith('data:')) {
+          const data = line.slice(5).trim()
+
+          if (lastEvent === 'taskId') {
+            taskId = parseInt(data, 10)
+          } else if (lastEvent === 'content') {
+            const t = tabs.value.find(x => x.id === tabId)
+            if (t) t.content += data
+          } else if (lastEvent === 'complete' && (data === '[DONE]' || data === 'done')) {
+            finished = true
+            polishLoading.value = false
+
+            // 以任务详情结果为准（保证拿到最终完整文本）
+            ;(async () => {
+              try {
+                if (typeof taskId === 'number' && !Number.isNaN(taskId)) {
+                  const res = await getPolishTask(taskId)
+                  const t = tabs.value.find(x => x.id === tabId)
+                  if (t) t.content = (res?.resultContent ?? res?.result_content ?? '') || ''
+                }
+              } catch (_) {
+                // ignore
+              } finally {
+                ElMessage.success('美化完成')
+              }
+            })()
+          } else if (lastEvent === 'error') {
+            finished = true
+            polishLoading.value = false
+            ElMessage.error(data || '美化失败')
+          }
+        }
+      })
+
+      if (finished) break
+    }
+  } catch (e) {
+    polishLoading.value = false
+    ElMessage.error('美化失败')
+  }
+}
+
+/** 续写：保留原文，并把 AI 续写追加到原文末尾 */
+const continueThis = async () => {
+  if (continueLoading.value || generateLoading.value || polishLoading.value) return
+
+  const tabId = activeTabId.value
+  const tab = tabs.value.find(t => t.id === tabId)
+  const baseContent = tab?.content ?? ''
+  const originalContent = baseContent.trim()
+  if (!originalContent) {
+    ElMessage.warning('当前篇章为空，无法续写')
+    return
+  }
+
+  continueLoading.value = true
+  // 保留原文；流式 content 直接追加
+  tab.content = baseContent
+
+  let taskId = null
+  let finished = false
+
+  try {
+    const response = await continueStream({
+      content: originalContent,
+      hint: undefined,
+      platform: undefined,
+      extendLength: '中等',
+      extendStyle: '保持原风格'
+    })
+
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error('No response.body')
+
+    const decoder = new TextDecoder()
+    let lastEvent = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      const text = decoder.decode(value)
+      const lines = text.split('\n')
+      lines.forEach(line => {
+        if (finished) return
+
+        if (line.startsWith('event:')) {
+          lastEvent = line.slice(6).trim()
+        } else if (line.startsWith('data:')) {
+          const data = line.slice(5).trim()
+
+          if (lastEvent === 'taskId') {
+            taskId = parseInt(data, 10)
+          } else if (lastEvent === 'content') {
+            const t = tabs.value.find(x => x.id === tabId)
+            if (t) t.content += data
+          } else if (lastEvent === 'complete' && (data === '[DONE]' || data === 'done')) {
+            finished = true
+            continueLoading.value = false
+
+            ;(async () => {
+              try {
+                if (typeof taskId === 'number' && !Number.isNaN(taskId)) {
+                  const res = await getContinuationTask(taskId)
+                  const t = tabs.value.find(x => x.id === tabId)
+                  const continuation = (res?.continuation ?? '') || ''
+                  if (t) {
+                    const sep = baseContent && continuation
+                      ? (continuation.startsWith('\n') ? '' : (baseContent.endsWith('\n') ? '\n' : '\n\n'))
+                      : ''
+                    t.content = baseContent + sep + continuation
+                  }
+                }
+              } catch (_) {
+                // ignore
+              } finally {
+                ElMessage.success('续写完成')
+              }
+            })()
+          } else if (lastEvent === 'error') {
+            finished = true
+            continueLoading.value = false
+            ElMessage.error(data || '续写失败')
+          }
+        }
+      })
+
+      if (finished) break
+    }
+  } catch (e) {
+    continueLoading.value = false
+    ElMessage.error('续写失败')
+  }
+}
 
 const downloadAll = () => {
   // 1. 获取当前激活的标签对象

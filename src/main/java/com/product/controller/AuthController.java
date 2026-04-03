@@ -1,12 +1,13 @@
 package com.product.controller;
 
 import com.product.common.Result;
+import com.product.dto.AppUserRegisterRequest;
 import com.product.dto.LoginRequest;
 import com.product.dto.LoginResponse;
 import com.product.dto.LoginResult;
-import com.product.dto.RegisterRequest;
 import com.product.service.AuthService;
 import com.product.util.JwtUtil;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -61,6 +62,19 @@ public class AuthController {
 
             LoginResult loginResult = new LoginResult(token, userInfo);
             return Result.success(loginResult);
+        } catch (RuntimeException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 注册普通用户（users 表）。无需登录，所有用户/访客均可注册新账号。
+     */
+    @PostMapping("/register/user")
+    public Result<Integer> registerNormalUser(@Valid @RequestBody AppUserRegisterRequest body) {
+        try {
+            Integer id = authService.registerNormalUser(body);
+            return Result.success("注册成功", id);
         } catch (RuntimeException e) {
             return Result.error(e.getMessage());
         }

@@ -15,7 +15,26 @@ export const useMarkdownCacheStore = defineStore('markdownCache', () => {
         activeTabId.value = newActiveId
     }
 
-    return { tabs, activeTabId, saveEditorState }
+    /**
+     * 从其它页面（生成/美化/续写）打开 Markdown 编辑器的新标签页，并激活该标签。
+     * 约定字段与 MarkdownEditor.vue 保持一致（含 savedCopyId）。
+     */
+    const openNewTab = ({ title = '未命名', content = '' } = {}) => {
+        const id = Date.now()
+        const tab = {
+            id,
+            title,
+            content,
+            isEditing: false,
+            savedCopyId: null
+        }
+        if (!Array.isArray(tabs.value)) tabs.value = []
+        tabs.value.push(tab)
+        activeTabId.value = id
+        return id
+    }
+
+    return { tabs, activeTabId, saveEditorState, openNewTab }
 }, {
     persist: true // 如果安装了 pinia-plugin-persistedstate，开启此项可自动同步到 LocalStorage
 })

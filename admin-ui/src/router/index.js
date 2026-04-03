@@ -59,28 +59,34 @@ const routes = [
         meta: { title: '生成历史', icon: 'Clock' }
       },
       {
-        path: 'merchant',
-        name: 'MerchantManagement',
-        component: () => import('@/views/MerchantManagement.vue'),
-        meta: { requiresAdmin: true }
-      },
-      {
         path: 'articlePlatform',
         name: 'ArticlePlatformManagement',
         component: () => import('@/views/ArticlePlatformManagement.vue'),
-        meta: { requiresAdmin: true }
+        meta: { title: '文章平台管理' }
       },
       {
         path: 'articleNews',
         name: 'ArticleNewsManagement',
         component: () => import('@/views/ArticleNewsManagement.vue'),
-        meta: { requiresAdmin: true }
+        meta: { title: '网络热点素材' }
       },
       {
           path: 'markdownEdit',
           name: 'MarkdownEditor',
           component: () => import('@/views/MarkdownEditor.vue'),
           meta: { title: '生成历史', icon: 'Clock' }
+      },
+      {
+        path: 'user-management',
+        name: 'UserManagement',
+        component: () => import('@/views/UserManagement.vue'),
+        meta: { requiresAdmin: true, title: '用户管理' }
+      },
+      {
+        path: 'user-center',
+        name: 'UserCenter',
+        component: () => import('@/views/PersonalCenter.vue'),
+        meta: { title: '个人中心' }
       }
     ]
   }
@@ -109,10 +115,19 @@ router.beforeEach((to, from, next) => {
     next('/login')
     return
   }
+
+  // 非管理员不应落在仅管理员可看的首页（仪表盘），改去 AI 文案生成
+  if (isTokenValid && (to.path === '/' || to.path === '/dashboard')) {
+    const ut = userStore.userInfo?.userType
+    if (ut && ut !== 'admin') {
+      next({ path: '/ai-writing/generate', replace: true })
+      return
+    }
+  }
   
-  // 检查管理员权限
+  // 检查管理员权限（已登录但非管理员：送回用户可用首页，避免误进管理页）
   if (to.meta.requiresAdmin && userStore.userInfo?.userType !== 'admin') {
-    next('/login')
+    next({ path: '/ai-writing/generate', replace: true })
     return
   }
 

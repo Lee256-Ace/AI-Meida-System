@@ -31,6 +31,7 @@
             <el-option label="文案生成" value="generate" />
             <el-option label="文章美化" value="polish" />
             <el-option label="文章续写" value="continue" />
+            <el-option label="保存文案" value="markdown" />
           </el-select>
         </el-col>
         <el-col :xs="24" :sm="6">
@@ -135,7 +136,7 @@
       />
     </el-card>
 
-    <!-- 详情弹窗：整体与小窗口滚动条独立触发，仅鼠标进入各自右侧窄条时显示 -->
+    <!-- 详情弹窗：分块展示时每块可「编辑」并传入 Markdown 编辑器新标签页 -->
     <el-dialog v-model="detailVisible" title="记录详情" width="800px" class="record-detail-dialog">
       <div
           ref="detailWrapRef"
@@ -143,7 +144,27 @@
           @mousemove="onDetailMouseMove"
           @mouseleave="onDetailMouseLeave"
       >
-        <div v-html="detailContent" />
+        <template v-if="detailSections.length">
+          <div class="detail-by-platform">
+            <p v-if="detailPrompt" class="detail-prompt">
+              <strong>创作需求：</strong>{{ detailPrompt }}
+            </p>
+            <div
+                v-for="(sec, idx) in detailSections"
+                :key="`${sec.key}-${idx}`"
+                class="detail-platform-block"
+            >
+              <div class="detail-platform-label detail-platform-label-row">
+                <span>【{{ sec.label }}】</span>
+                <el-button link size="small" class="detail-edit-markdown-btn" @click="editSectionInMarkdown(sec)">
+                  编辑
+                </el-button>
+              </div>
+              <pre class="detail-platform-content">{{ displaySectionText(sec.text) }}</pre>
+            </div>
+          </div>
+        </template>
+        <div v-else v-html="detailContent" />
       </div>
     </el-dialog>
   </div>
@@ -154,6 +175,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
+import { useMarkdownCacheStore } from '@/stores/markDownCache'
 import {
   getHistoryList,
   getHistoryStatistics,
@@ -163,6 +185,7 @@ import {
 } from '@/api/aiWriting'
 
 const router = useRouter()
+const markdownCache = useMarkdownCacheStore()
 
 const loading = ref(false)
 const historyList = ref([])
@@ -190,28 +213,50 @@ const pagination = reactive({
 
 const detailVisible = ref(false)
 const detailContent = ref('')
+/** 当前详情对应的列表项（标题等） */
+const detailListItem = ref(null)
+/** 详情原始数据，用于构建可编辑分块 */
+const detailData = ref(null)
+const detailType = ref(null)
 const detailWrapRef = ref(null)
 const SCROLLBAR_ZONE_WIDTH = 14
 const SCROLLABLE_SELECTOR = '.detail-by-platform, .detail-platform-content, .detail-pre'
 
 const selectedCount = computed(() => selected.value.size)
 
+const detailPrompt = computed(() => {
+  if (detailType.value !== 'generate' || !detailData.value) return ''
+  const p = detailData.value.prompt
+  return p != null ? String(p) : ''
+})
+
+/** 与 renderDetail 分块逻辑一致，用于结构化展示与「编辑」入口 */
+const detailSections = computed(() => {
+  const type = detailType.value
+  const data = detailData.value
+  if (!type || !data) return []
+  return buildDetailSections(type, data)
+})
+
 const typeName = (type) => ({
   generate: '文案生成',
   polish: '文章美化',
-  continue: '文章续写'
+  continue: '文章续写',
+  markdown: '保存文案'
 }[type])
 
 const typeColor = (type) => ({
   generate: 'primary',
   polish: 'success',
-  continue: 'warning'
+  continue: 'warning',
+  markdown: 'info'
 }[type])
 
 const statusColor = (status) => ({
   completed: 'success',
   processing: 'warning',
-  failed: 'danger'
+  failed: 'danger',
+  saved: 'info'
 }[status])
 
 const formatNumber = (num) => {
@@ -286,11 +331,79 @@ const toggleSelect = (id) => {
 const viewDetail = async (item) => {
   try {
     const res = await getHistoryDetail(item.type, item.id)
+    detailListItem.value = item
+    detailData.value = res
+    detailType.value = item.type
     detailContent.value = renderDetail(item.type, res)
     detailVisible.value = true
   } catch (e) {
     ElMessage.error('加载详情失败')
   }
+}
+
+/** 详情里展示的文案（今日头条占位符与正文展示一致） */
+const displaySectionText = (text) => {
+  if (text == null) return ''
+  const s = String(text)
+  return s === TOUTIAO_PLACEHOLDER_LEGACY ? TOUTIAO_PLACEHOLDER_DISPLAY : s
+}
+
+/**
+ * 将详情拆成可单独编辑的「篇」：生成按平台多块，美化/续写/保存文案各一块。
+ * @returns {{ key: string, label: string, text: string }[]}
+ */
+const buildDetailSections = (type, data) => {
+  if (!data) return []
+
+  if (type === 'generate') {
+    const sections = []
+    const hasPlatformCopies = getPlatformCopy(data, 'douyin') != null || getPlatformCopy(data, 'xiaohongshu') != null || getPlatformCopy(data, 'video_account') != null || getPlatformCopy(data, 'toutiao') != null
+    if (hasPlatformCopies) {
+      PLATFORM_LABELS.forEach(({ key, label }) => {
+        const copy = getPlatformCopy(data, key)
+        if (copy && String(copy).trim()) sections.push({ key, label, text: copy })
+      })
+    }
+    if (sections.length === 0 && data.content) {
+      parseContentByPlatform(data.content).forEach(({ key, label, text }) => sections.push({ key, label, text }))
+    }
+    if (sections.length === 0 && data.content) {
+      sections.push({ key: 'all', label: '全部', text: data.content })
+    }
+    return sections
+  }
+
+  if (type === 'markdown' && data.content != null && String(data.content).trim()) {
+    const label = data.title ? String(data.title) : '保存文案'
+    return [{ key: 'markdown', label, text: data.content }]
+  }
+
+  if (type === 'polish') {
+    const text = data.resultContent ?? data.result_content
+    if (text != null && String(text).trim()) {
+      return [{ key: 'polish', label: '美化结果', text }]
+    }
+  }
+
+  if (type === 'continue' && data.continuation != null && String(data.continuation).trim()) {
+    return [{ key: 'continue', label: '续写内容', text: data.continuation }]
+  }
+
+  return []
+}
+
+/** 将当前分块全文写入 Markdown 编辑器新标签页并跳转 */
+const editSectionInMarkdown = (sec) => {
+  if (!sec?.text || !String(sec.text).trim()) {
+    ElMessage.warning('该段文案为空，无法编辑')
+    return
+  }
+  const base = detailListItem.value?.title || '历史记录'
+  const tabTitle = `${base}-${sec.label}`.replace(/\s+/g, ' ').trim().slice(0, 80) || '未命名'
+  markdownCache.openNewTab({ title: tabTitle, content: String(sec.text) })
+  detailVisible.value = false
+  router.push({ path: '/markdownEdit' })
+  ElMessage.success('已在新标签页打开，可继续修改')
 }
 
 /** 每个滚动区域独立判定：仅当鼠标进入该元素右侧窄条时显示；重叠时只激活最右侧包含鼠标的那一个（靠近总滑动条只显整体） */
@@ -405,6 +518,18 @@ const renderDetail = (type, data) => {
     return html
   }
 
+  if (type === 'markdown') {
+    let html = ''
+    if (data.title) html += `<p><strong>标题：</strong>${escapeHtml(data.title)}</p>`
+    if (data.updatedAt || data.createdAt) {
+      const t = data.updatedAt || data.createdAt
+      html += `<p><strong>更新时间：</strong>${escapeHtml(String(t))}</p>`
+    }
+    if (data.content) html += `<p><strong>文案内容：</strong></p><pre class="detail-pre">${escapeHtml(data.content)}</pre>`
+    if (!html) html = '<p>无详情</p>'
+    return html
+  }
+
   // 美化 / 续写：保留原有整体展示，仅增加平台与主要内容
   const platformName = data.platform ? { douyin: '抖音', xiaohongshu: '小红书', video_account: '视频号', toutiao: '今日头条' }[data.platform] || data.platform : null
   let html = ''
@@ -429,10 +554,13 @@ const reuse = (item) => {
   const routes = {
     generate: '/ai-writing/generate',
     polish: '/ai-writing/polish',
-    continue: '/ai-writing/continue'
+    continue: '/ai-writing/continue',
+    markdown: '/markdownEdit'
   }
+  const path = routes[item.type]
+  if (!path) return
   router.push({
-    path: routes[item.type],
+    path,
     query: { content: encodeURIComponent(item.title) }
   })
 }
@@ -616,6 +744,23 @@ onMounted(() => {
   color: #409eff;
   font-weight: 600;
   font-size: 15px;
+}
+:deep(.detail-platform-label-row) {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+/* 详情内「编辑」：醒目紫色，与平台标题栏形成对比 */
+:deep(.detail-edit-markdown-btn) {
+  flex-shrink: 0;
+  font-weight: 600;
+  font-size: 14px;
+  color: #7c3aed !important;
+}
+:deep(.detail-edit-markdown-btn:hover),
+:deep(.detail-edit-markdown-btn:focus) {
+  color: #6d28d9 !important;
 }
 :deep(.detail-platform-content),
 :deep(.detail-pre) {

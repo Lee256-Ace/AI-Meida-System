@@ -3,6 +3,8 @@ package com.product.mapper;
 import com.product.entity.MarkdownCopy;
 import org.apache.ibatis.annotations.*;
 
+import java.util.List;
+
 @Mapper
 public interface MarkdownCopyMapper {
 
@@ -16,4 +18,19 @@ public interface MarkdownCopyMapper {
 
     @Select("SELECT * FROM ai_markdown_copy WHERE id = #{id}")
     MarkdownCopy selectById(Long id);
+
+    @Select("SELECT * FROM ai_markdown_copy ORDER BY updated_at DESC")
+    List<MarkdownCopy> selectAll();
+
+    @Delete("DELETE FROM ai_markdown_copy WHERE id = #{id}")
+    int deleteById(Long id);
+
+    @Select("SELECT COUNT(*) FROM ai_markdown_copy")
+    Long count();
+
+    @Select("SELECT COUNT(*) FROM ai_markdown_copy WHERE DATE(updated_at) = CURDATE()")
+    Long countToday();
+
+    @Select("SELECT COALESCE(SUM(CHAR_LENGTH(content)), 0) FROM ai_markdown_copy")
+    Long sumWords();
 }

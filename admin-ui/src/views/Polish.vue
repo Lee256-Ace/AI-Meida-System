@@ -83,8 +83,7 @@
         <el-button @click="downloadText(polishResult.content, 'polished')">
           <el-icon><Download /></el-icon> 下载
         </el-button>
-        <el-button @click=" ">
-<!--          TODO-->
+        <el-button type="primary" @click="startEditFromPolish">
           <el-icon><DocumentAdd /></el-icon> 开始编辑
         </el-button>
         <el-button type="warning" @click="useForContinue">
@@ -103,6 +102,7 @@ import { ElMessage } from 'element-plus'
 import { Brush, DocumentCopy, Download, DocumentAdd } from '@element-plus/icons-vue'
 import { polishStream, getPolishTask } from '@/api/aiWriting'
 import { useAiWritingCacheStore } from '@/stores/aiWritingCache'
+import { useMarkdownCacheStore } from '@/stores/markDownCache'
 import { renderMarkdown } from '@/utils/markdown'
 
 const PLATFORM_NAMES = { douyin: '抖音', xiaohongshu: '小红书', video_account: '视频号', toutiao: '今日头条' }
@@ -110,6 +110,7 @@ const PLATFORM_NAMES = { douyin: '抖音', xiaohongshu: '小红书', video_accou
 const route = useRoute()
 const router = useRouter()
 const cacheStore = useAiWritingCacheStore()
+const markdownCache = useMarkdownCacheStore()
 
 const polishForm = reactive({
   content: '',
@@ -188,46 +189,70 @@ const polish = async () => {
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
+    let buffer = ''
     let lastEvent = ''
+
+    const processRawEvent = (rawEvent) => {
+      if (!rawEvent || !String(rawEvent).trim()) return
+      const lines = String(rawEvent).replace(/\r\n/g, '\n').split('\n')
+      let eventName = lastEvent
+      const dataLines = []
+
+      for (const line of lines) {
+        if (line.startsWith('event:')) {
+          eventName = line.slice(6).trim()
+        } else if (line.startsWith('data:')) {
+          dataLines.push(line.slice(5))
+        }
+      }
+
+      lastEvent = eventName || lastEvent
+      const data = dataLines.join('\n').trim()
+
+      if (lastEvent === 'taskId') {
+        polishResult.taskId = '#' + data
+      } else if (lastEvent === 'complete' && (data === '[DONE]' || data === 'done')) {
+        polishResult.status = 'completed'
+        polishLoading.value = false
+        const idStr = polishResult.taskId.replace(/^#/, '')
+        const id = parseInt(idStr, 10)
+        if (!isNaN(id)) {
+          getPolishTask(id).then(res => {
+            if (res) {
+              if (res.platform) polishResult.platformName = PLATFORM_NAMES[res.platform] || res.platform
+              const text = res.resultContent ?? res.result_content ?? ''
+              if (text) polishResult.content = text
+            }
+          }).catch(() => {})
+        }
+        ElMessage.success('美化完成')
+      } else if (lastEvent === 'content') {
+        polishResult.content += data
+      } else if (lastEvent === 'error') {
+        polishResult.status = 'error'
+        polishLoading.value = false
+        ElMessage.error(data || '美化失败')
+      }
+    }
 
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
 
-      const text = decoder.decode(value)
-      const lines = text.split('\n')
+      buffer += decoder.decode(value, { stream: true })
+      buffer = buffer.replace(/\r\n/g, '\n')
 
-      lines.forEach(line => {
-        if (line.startsWith('event:')) {
-          lastEvent = line.slice(6).trim()
-        } else if (line.startsWith('data:')) {
-          const data = line.slice(5).trim()
-          if (lastEvent === 'taskId') {
-            polishResult.taskId = '#' + data
-          } else if (lastEvent === 'complete' && (data === '[DONE]' || data === 'done')) {
-            polishResult.status = 'completed'
-            polishLoading.value = false
-            const idStr = polishResult.taskId.replace(/^#/, '')
-            const id = parseInt(idStr, 10)
-            if (!isNaN(id)) {
-              getPolishTask(id).then(res => {
-                if (res) {
-                  if (res.platform) polishResult.platformName = PLATFORM_NAMES[res.platform] || res.platform
-                  const text = res.resultContent ?? res.result_content ?? ''
-                  if (text) polishResult.content = text
-                }
-              }).catch(() => {})
-            }
-            ElMessage.success('美化完成')
-          } else if (lastEvent === 'content') {
-            polishResult.content += data
-          } else if (lastEvent === 'error') {
-            polishResult.status = 'error'
-            polishLoading.value = false
-            ElMessage.error(data || '美化失败')
-          }
-        }
-      })
+      let sepIndex
+      while ((sepIndex = buffer.indexOf('\n\n')) !== -1) {
+        const rawEvent = buffer.slice(0, sepIndex)
+        buffer = buffer.slice(sepIndex + 2)
+        processRawEvent(rawEvent)
+      }
+    }
+
+    // 流结束时可能没有以空行结尾，补一次 flush，避免丢最后一帧
+    if (buffer && buffer.trim()) {
+      processRawEvent(buffer)
     }
   } catch (error) {
     polishResult.status = 'error'
@@ -254,6 +279,29 @@ const useForContinue = () => {
     path: '/ai-writing/continue',
     query: { content: encodeURIComponent(polishResult.content) }
   })
+}
+
+const formatTabTime = () => {
+  const d = new Date()
+  const MM = String(d.getMonth() + 1).padStart(2, '0')
+  const DD = String(d.getDate()).padStart(2, '0')
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  return `${MM}/${DD} ${hh}:${mm}`
+}
+
+/** 把美化后的新文案送到 MarkdownEditor 的新标签页，并跳转过去 */
+const startEditFromPolish = () => {
+  const content = (polishResult.content ?? '').trim()
+  if (!content) {
+    ElMessage.warning('当前没有可编辑的美化结果')
+    return
+  }
+  const platform = polishResult.platformName || '默认'
+  const taskId = polishResult.taskId && polishResult.taskId !== '-' ? polishResult.taskId : ''
+  const title = `美化-${platform}${taskId ? `-${taskId}` : ''}-${formatTabTime()}`
+  markdownCache.openNewTab({ title, content })
+  router.push({ path: '/markdownEdit' })
 }
 </script>
 

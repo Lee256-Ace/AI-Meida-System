@@ -10,7 +10,6 @@ export const useUserStore = defineStore('user', () => {
   // 计算属性
   const isLoggedIn = computed(() => !!token.value)
   const isAdmin = computed(() => userInfo.value.userType === 'admin')
-  const isMerchant = computed(() => userInfo.value.userType === 'merchant')
 
   // 方法
   const setToken = (newToken) => {
@@ -89,7 +88,6 @@ export const useUserStore = defineStore('user', () => {
     userInfo,
     isLoggedIn,
     isAdmin,
-    isMerchant,
     setUserInfo,
     loginAction,
     getUserInfoAction,

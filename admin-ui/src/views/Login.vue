@@ -55,7 +55,66 @@
       <div class="login-tips">
         <p>管理员：admin / admin123</p>
       </div>
+
+      <div class="register-link">
+        <p>
+          还没有账号？
+          <el-button link type="primary" class="reg-btn" @click="registerVisible = true">注册普通用户</el-button>
+        </p>
+      </div>
     </div>
+
+    <el-dialog
+      v-model="registerVisible"
+      title="注册普通用户"
+      width="440px"
+      destroy-on-close
+      @closed="resetRegisterForm"
+    >
+      <el-form
+        ref="registerFormRef"
+        :model="registerForm"
+        :rules="registerRules"
+        label-width="90px"
+      >
+        <el-form-item label="用户名" prop="username">
+          <el-input v-model="registerForm.username" placeholder="3-20 位，全系统唯一" maxlength="20" clearable />
+        </el-form-item>
+        <el-form-item label="密码" prop="password">
+          <el-input
+            v-model="registerForm.password"
+            type="password"
+            placeholder="6-20 位"
+            maxlength="20"
+            show-password
+            clearable
+          />
+        </el-form-item>
+        <el-form-item label="确认密码" prop="password2">
+          <el-input
+            v-model="registerForm.password2"
+            type="password"
+            placeholder="再次输入密码"
+            maxlength="20"
+            show-password
+            clearable
+          />
+        </el-form-item>
+        <el-form-item label="真实姓名" prop="realName">
+          <el-input v-model="registerForm.realName" placeholder="选填" maxlength="50" clearable />
+        </el-form-item>
+        <el-form-item label="手机号" prop="phone">
+          <el-input v-model="registerForm.phone" placeholder="选填" maxlength="11" clearable />
+        </el-form-item>
+        <el-form-item label="邮箱" prop="email">
+          <el-input v-model="registerForm.email" placeholder="选填" maxlength="100" clearable />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="registerVisible = false">取消</el-button>
+        <el-button type="primary" :loading="registerLoading" @click="submitRegister">注册</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -64,12 +123,82 @@ import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
+import { registerNormalUser } from '@/api/auth'
 
 const router = useRouter()
 const userStore = useUserStore()
 
 const loginFormRef = ref()
 const loading = ref(false)
+
+const registerVisible = ref(false)
+const registerFormRef = ref()
+const registerLoading = ref(false)
+const registerForm = reactive({
+  username: '',
+  password: '',
+  password2: '',
+  realName: '',
+  phone: '',
+  email: ''
+})
+
+const validatePass2 = (rule, value, callback) => {
+  if (!value) {
+    callback(new Error('请再次输入密码'))
+  } else if (value !== registerForm.password) {
+    callback(new Error('两次密码不一致'))
+  } else {
+    callback()
+  }
+}
+
+const registerRules = {
+  username: [
+    { required: true, message: '请输入用户名', trigger: 'blur' },
+    { min: 3, max: 20, message: '用户名长度必须在 3-20 个字符之间', trigger: 'blur' }
+  ],
+  password: [
+    { required: true, message: '请输入密码', trigger: 'blur' },
+    { min: 6, max: 20, message: '密码长度必须在 6-20 个字符之间', trigger: 'blur' }
+  ],
+  password2: [{ required: true, validator: validatePass2, trigger: 'blur' }]
+}
+
+const resetRegisterForm = () => {
+  registerForm.username = ''
+  registerForm.password = ''
+  registerForm.password2 = ''
+  registerForm.realName = ''
+  registerForm.phone = ''
+  registerForm.email = ''
+  registerFormRef.value?.resetFields()
+}
+
+const submitRegister = async () => {
+  try {
+    await registerFormRef.value.validate()
+  } catch {
+    return
+  }
+  registerLoading.value = true
+  try {
+    await registerNormalUser({
+      username: registerForm.username.trim(),
+      password: registerForm.password,
+      realName: registerForm.realName?.trim() || undefined,
+      phone: registerForm.phone?.trim() || undefined,
+      email: registerForm.email?.trim() || undefined
+    })
+    ElMessage.success('注册成功，请使用新账号登录')
+    registerVisible.value = false
+    resetRegisterForm()
+  } catch {
+    /* 错误由拦截器提示 */
+  } finally {
+    registerLoading.value = false
+  }
+}
 
 const loginForm = reactive({
   username: '',
@@ -99,10 +228,12 @@ const handleLogin = async () => {
     
     if (result.success) {
       ElMessage.success('登录成功')
-      if (loginForm.userType === 'user') {
-        window.location.href = 'http://localhost:5174/home'
+      // 管理员进仪表盘；普通用户/商家等统一进本应用的 AI 工作台（避免跳到未启动的其它端口）
+      const ut = userStore.userInfo.userType
+      if (ut === 'admin') {
+        await router.push('/')
       } else {
-        router.push('/')
+        await router.push('/ai-writing/generate')
       }
     } else {
       ElMessage.error(result.message || '登录失败')
@@ -278,6 +409,13 @@ const handleLogin = async () => {
   color: var(--primary-dark);
   background: rgba(24, 144, 255, 0.1);
   text-decoration: none;
+}
+
+.register-link .reg-btn {
+  padding: 0;
+  height: auto;
+  font-size: 14px;
+  vertical-align: baseline;
 }
 
 :deep(.el-form-item__label) {

@@ -36,4 +36,6 @@ src/main/resources/db/migration_add_all_missing.sql
 src/main/resources/db/migration_add_platform_copy_columns.sql
 src/main/resources/db/migration_add_platform_polish_continuation.sql
 src/main/resources/db/migration_add_toutiao_copy_only.sql
-
+.idea
+.vscode
+/admin-ui/.gitignore

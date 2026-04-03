@@ -93,8 +93,7 @@
               <el-button type="warning" size="small" @click="useForContinue(block)">
                 <el-icon><DocumentAdd /></el-icon> 续写此篇
               </el-button>
-<!--              TODO-->
-              <el-button type=" " size="small" @click=" ">
+              <el-button type="primary" size="small" @click="startEditFromGenerate(block)">
                 <el-icon><DocumentAdd /></el-icon> 开始编辑
               </el-button>
             </div>
@@ -129,15 +128,18 @@
 <script setup>
 defineOptions({ name: 'AiGenerate' })
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { MagicStick, DocumentCopy, Download, Brush, DocumentAdd } from '@element-plus/icons-vue'
 import { generateStream, getGenerationTask } from '@/api/aiWriting'
 import { renderMarkdown } from '@/utils/markdown'
 import { useAiWritingCacheStore } from '@/stores/aiWritingCache'
+import { useMarkdownCacheStore } from '@/stores/markDownCache'
 
+const route = useRoute()
 const router = useRouter()
 const cacheStore = useAiWritingCacheStore()
+const markdownCache = useMarkdownCacheStore()
 
 const PLATFORM_OPTIONS = ['douyin', 'xiaohongshu', 'video_account', 'toutiao']
 
@@ -345,8 +347,37 @@ const useForContinue = (block) => {
   router.push({ path: '/ai-writing/continue', query })
 }
 
+const formatTabTime = () => {
+  const d = new Date()
+  const MM = String(d.getMonth() + 1).padStart(2, '0')
+  const DD = String(d.getDate()).padStart(2, '0')
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  return `${MM}/${DD} ${hh}:${mm}`
+}
+
+/** 把生成的新文案送到 MarkdownEditor 的新标签页，并跳转过去 */
+const startEditFromGenerate = (block) => {
+  const text = block ? block.text : fullContentForCopy.value
+  const content = (text ?? '').trim()
+  if (!content) {
+    ElMessage.warning('当前没有可编辑的生成结果')
+    return
+  }
+  const label = block ? block.label : '全部'
+  const taskId = genResult.taskId && genResult.taskId !== '-' ? genResult.taskId : ''
+  const title = `生成-${label}${taskId ? `-${taskId}` : ''}-${formatTabTime()}`
+  markdownCache.openNewTab({ title, content })
+  router.push({ path: '/markdownEdit' })
+}
+
 onMounted(() => {
-  const c =  .writing
+  // 支持从 Markdown 编辑器跳转过来：把 prompt 预填到输入框
+  if (route.query.prompt) {
+    genForm.prompt = decodeURIComponent(route.query.prompt)
+    return
+  }
+  const c =  cacheStore.writing
   if (c.form.prompt || c.result.content || c.result.show) {
     genForm.prompt = c.form.prompt
     genForm.platforms = c.form.platforms.length ? [...c.form.platforms] : ['douyin', 'xiaohongshu', 'video_account', 'toutiao']
