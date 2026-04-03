@@ -121,5 +121,22 @@ WHERE a.username <> 'admin'
 -- 清理 admins 中非 admin 记录
 DELETE FROM admins
 WHERE username <> 'admin'
-  AND EXISTS SELECT 1 FROM users u WHERE u.username = admins.username);
+  AND EXISTS (SELECT 1 FROM users u WHERE u.username = admins.username);
+
+-- ------------------------------------------------------------
+-- 7. publish_history 历史发布记录（手动登记各平台已发布文案）
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS publish_history (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    platform_name VARCHAR(100) NULL DEFAULT NULL COMMENT '发布平台名称',
+    title VARCHAR(255) NOT NULL DEFAULT '' COMMENT '标题或主题',
+    content LONGTEXT NULL COMMENT '发布文案正文',
+    publish_url VARCHAR(500) NULL DEFAULT NULL COMMENT '发布后的链接',
+    status VARCHAR(32) NULL DEFAULT 'recorded' COMMENT '状态：recorded已记录 success成功 failed失败',
+    remark VARCHAR(500) NULL DEFAULT NULL COMMENT '备注',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_created_at (created_at),
+    INDEX idx_platform_name (platform_name)
+) COMMENT '历史发布记录';
 

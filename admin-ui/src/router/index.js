@@ -71,6 +71,12 @@ const routes = [
         meta: { title: '网络热点素材' }
       },
       {
+        path: 'publishHistory',
+        name: 'PublishHistoryManagement',
+        component: () => import('@/views/PublishHistoryManagement.vue'),
+        meta: { title: '历史发布' }
+      },
+      {
           path: 'markdownEdit',
           name: 'MarkdownEditor',
           component: () => import('@/views/MarkdownEditor.vue'),

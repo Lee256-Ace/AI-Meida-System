@@ -92,3 +92,17 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     UNIQUE INDEX uk_username (username)
 ) COMMENT '普通用户表';
+
+CREATE TABLE IF NOT EXISTS publish_history (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    platform_name VARCHAR(100) NULL DEFAULT NULL COMMENT '发布平台名称',
+    title VARCHAR(255) NOT NULL DEFAULT '' COMMENT '标题或主题',
+    content LONGTEXT NULL COMMENT '发布文案正文',
+    publish_url VARCHAR(500) NULL DEFAULT NULL COMMENT '发布后的链接',
+    status VARCHAR(32) NULL DEFAULT 'recorded' COMMENT '状态',
+    remark VARCHAR(500) NULL DEFAULT NULL COMMENT '备注',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_created_at (created_at),
+    INDEX idx_platform_name (platform_name)
+) COMMENT '历史发布记录';

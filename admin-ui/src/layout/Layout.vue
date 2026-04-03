@@ -64,14 +64,19 @@
           <span>网络热点素材</span>
         </el-menu-item>
 
-        <el-menu-item index="/user-management">
-          <el-icon><UserFilled /></el-icon>
-          <span>用户管理</span>
+        <el-menu-item index="/publishHistory">
+          <el-icon><Promotion /></el-icon>
+          <span>历史发布</span>
         </el-menu-item>
 
         <el-menu-item index="/markdownEdit">
           <el-icon><Document /></el-icon>
           <span>编辑文案</span>
+        </el-menu-item>
+
+        <el-menu-item index="/user-management">
+          <el-icon><UserFilled /></el-icon>
+          <span>用户管理</span>
         </el-menu-item>
       </el-menu>
 
@@ -89,31 +94,43 @@
             <el-icon><MagicStick /></el-icon>
             <span>AI 文案生成</span>
           </template>
+
           <el-menu-item index="/ai-writing/generate">
             <el-icon><EditPen /></el-icon>
             <span>文案生成</span>
           </el-menu-item>
+
           <el-menu-item index="/ai-writing/polish">
             <el-icon><Brush /></el-icon>
             <span>文章美化</span>
           </el-menu-item>
+
           <el-menu-item index="/ai-writing/continue">
             <el-icon><DocumentAdd /></el-icon>
             <span>文章续写</span>
           </el-menu-item>
+
           <el-menu-item index="/ai-writing/history">
             <el-icon><Clock /></el-icon>
             <span>生成历史</span>
           </el-menu-item>
         </el-sub-menu>
+
         <el-menu-item index="/articlePlatform">
           <el-icon><Document /></el-icon>
           <span>文章平台管理</span>
         </el-menu-item>
+
         <el-menu-item index="/articleNews">
           <el-icon><Document /></el-icon>
           <span>网络热点素材</span>
         </el-menu-item>
+
+        <el-menu-item index="/publishHistory">
+          <el-icon><Promotion /></el-icon>
+          <span>历史发布</span>
+        </el-menu-item>
+
         <el-menu-item index="/markdownEdit">
           <el-icon><Document /></el-icon>
           <span>编辑文案</span>
@@ -165,7 +182,8 @@ import {
   EditPen,
   Clock,
   UserFilled,
-  Document
+  Document,
+  Promotion
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
@@ -183,7 +201,8 @@ const getCurrentPageTitle = () => {
     '/user-center': '个人中心',
     '/markdownEdit': '编辑文案',
     '/articlePlatform': '文章平台管理',
-    '/articleNews': '网络热点素材'
+    '/articleNews': '网络热点素材',
+    '/publishHistory': '历史发布'
   }
   return routeMap[router.currentRoute.value.path] || '页面'
 }

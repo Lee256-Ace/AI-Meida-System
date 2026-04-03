@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.product.mapper.PublishHistoryMapper">
+
+    <resultMap id="BaseResultMap" type="com.product.entity.PublishHistory">
+        <id column="id" property="id" jdbcType="BIGINT"/>
+        <result column="platform_name" property="platformName" jdbcType="VARCHAR"/>
+        <result column="title" property="title" jdbcType="VARCHAR"/>
+        <result column="content" property="content" jdbcType="LONGVARCHAR"/>
+        <result column="publish_url" property="publishUrl" jdbcType="VARCHAR"/>
+        <result column="status" property="status" jdbcType="VARCHAR"/>
+        <result column="remark" property="remark" jdbcType="VARCHAR"/>
+        <result column="created_at" property="createdAt" jdbcType="TIMESTAMP"/>
+        <result column="updated_at" property="updatedAt" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, platform_name, title, content, publish_url, status, remark, created_at, updated_at
+    </sql>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM publish_history
+        WHERE id = #{id}
+    </select>
+
+    <select id="selectByPage" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM publish_history
+        ORDER BY id DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countTotal" resultType="integer">
+        SELECT COUNT(*) FROM publish_history
+    </select>
+
+    <select id="selectByPageWithSearch" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM publish_history
+        <where>
+            <if test="platformName != null and platformName != ''">
+                AND platform_name LIKE CONCAT('%', #{platformName}, '%')
+            </if>
+            <if test="title != null and title != ''">
+                AND title LIKE CONCAT('%', #{title}, '%')
+            </if>
+        </where>
+        ORDER BY id DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countTotalWithSearch" resultType="integer">
+        SELECT COUNT(*) FROM publish_history
+        <where>
+            <if test="platformName != null and platformName != ''">
+                AND platform_name LIKE CONCAT('%', #{platformName}, '%')
+            </if>
+            <if test="title != null and title != ''">
+                AND title LIKE CONCAT('%', #{title}, '%')
+            </if>
+        </where>
+    </select>
+
+    <insert id="insert" parameterType="com.product.entity.PublishHistory" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO publish_history
+        (platform_name, title, content, publish_url, status, remark, created_at, updated_at)
+        VALUES (
+            #{platformName,jdbcType=VARCHAR},
+            #{title,jdbcType=VARCHAR},
+            #{content,jdbcType=LONGVARCHAR},
+            #{publishUrl,jdbcType=VARCHAR},
+            #{status,jdbcType=VARCHAR},
+            #{remark,jdbcType=VARCHAR},
+            #{createdAt,jdbcType=TIMESTAMP},
+            #{updatedAt,jdbcType=TIMESTAMP}
+        )
+    </insert>
+
+    <update id="update" parameterType="com.product.entity.PublishHistory">
+        UPDATE publish_history
+        SET
+            platform_name = #{platformName,jdbcType=VARCHAR},
+            title = #{title,jdbcType=VARCHAR},
+            content = #{content,jdbcType=LONGVARCHAR},
+            publish_url = #{publishUrl,jdbcType=VARCHAR},
+            status = #{status,jdbcType=VARCHAR},
+            remark = #{remark,jdbcType=VARCHAR},
+            updated_at = #{updatedAt,jdbcType=TIMESTAMP}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM publish_history WHERE id = #{id}
+    </delete>
+</mapper>

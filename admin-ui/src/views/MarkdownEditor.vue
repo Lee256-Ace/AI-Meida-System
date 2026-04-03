@@ -72,8 +72,52 @@
         <el-button type="primary" link icon="DocumentCopy" @click="copyAll">复制文案</el-button>
         <el-button type="primary" link icon="Download" @click="downloadAll">下载文案</el-button>
         <el-button type="primary" link icon="EditPen" :loading="saveLoading" @click="saveCopy">保存文案</el-button>
+        <el-button type="primary" link @click="openPublishDialog">
+          <el-icon class="el-icon--left"><Promotion /></el-icon>
+          发布
+        </el-button>
       </div>
     </div>
+
+    <!-- 发布向导：复制正文 + 跳转各平台创作页（无官方代发 API） -->
+    <el-dialog
+        v-model="publishDialogVisible"
+        title="发布到社交平台"
+        width="520px"
+        destroy-on-close
+        class="publish-guide-dialog"
+    >
+      <p class="publish-guide-tip">
+        小红书、抖音、视频号等平台<strong>不向第三方开放「一键代发」接口</strong>，需使用浏览器登录官方创作后台。
+        下面会<strong>复制当前标签正文</strong>并<strong>打开发布页</strong>，您粘贴后即可发布。
+      </p>
+      <el-form label-width="88px" class="publish-guide-form">
+        <el-form-item label="目标平台">
+          <el-select v-model="publishPlatformKey" placeholder="请选择" style="width: 100%">
+            <el-option
+                v-for="p in publishPlatforms"
+                :key="p.key"
+                :label="p.name"
+                :value="p.key"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="标题/主题">
+          <el-input v-model="publishTitle" placeholder="与正文一起登记到「历史发布」时使用" clearable />
+        </el-form-item>
+        <el-form-item label="复制格式">
+          <el-checkbox v-model="publishCopyAsPlain">复制为纯文本（去掉常见 Markdown 符号，便于粘贴到部分编辑器）</el-checkbox>
+        </el-form-item>
+        <el-form-item v-if="selectedPublishPlatform" label="说明">
+          <span class="publish-platform-hint">{{ selectedPublishPlatform.hint }}</span>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="publishDialogVisible = false">关闭</el-button>
+        <el-button :loading="publishRegisterLoading" @click="registerPublishFromEditor">登记到历史发布</el-button>
+        <el-button type="primary" @click="copyAndOpenPublishPage">复制正文并打开发布页</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -86,10 +130,11 @@ import highlight from '@bytemd/plugin-highlight'
 import math from '@bytemd/plugin-math'
 import mermaid from '@bytemd/plugin-mermaid'
 import zhHans from 'bytemd/locales/zh_Hans.json'
-import { MagicStick, EditPen, VideoPlay, DocumentCopy, Download } from '@element-plus/icons-vue'
+import { MagicStick, EditPen, VideoPlay, DocumentCopy, Download, Promotion } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useMarkdownCacheStore } from '@/stores/markDownCache'
 import { saveMarkdownCopy } from '@/api/markdownCopy'
+import { addPublishHistory } from '@/api/publishHistory'
 
 import 'bytemd/dist/index.css'
 import 'katex/dist/katex.css'
@@ -133,6 +178,142 @@ const handleChange = (v) => {
 }
 
 const getActiveTab = () => tabs.value.find(t => t.id === activeTabId.value)
+
+/** 各平台官方创作入口（链接可能随平台改版调整，以登录后实际页面为准） */
+const publishPlatforms = [
+  {
+    key: 'xiaohongshu',
+    name: '小红书',
+    url: 'https://creator.xiaohongshu.com/publish/publish',
+    hint: '需已开通小红书「专业号/创作者」并在电脑浏览器登录创作服务平台，在发布页粘贴正文与配图。'
+  },
+  {
+    key: 'douyin',
+    name: '抖音',
+    url: 'https://creator.douyin.com/creator-micro/content/publish',
+    hint: '建议在已登录状态下使用；短视频多在抖音 App 内发布，网页端以实际入口为准。'
+  },
+  {
+    key: 'channels',
+    name: '微信视频号',
+    url: 'https://channels.weixin.qq.com/platform/post/create',
+    hint: '需微信扫码登录视频号助手；部分账号仅支持手机端发表，以平台提示为准。'
+  },
+  {
+    key: 'toutiao',
+    name: '今日头条',
+    url: 'https://mp.toutiao.com/profile_v4/graphic/publish',
+    hint: '需登录头条号后台；图文发布入口以当前后台菜单为准。'
+  },
+  {
+    key: 'weibo',
+    name: '微博',
+    url: 'https://weibo.com/',
+    hint: '在首页顶部发布框粘贴；长文可考虑「头条文章」等入口。'
+  },
+  {
+    key: 'bilibili',
+    name: '哔哩哔哩',
+    url: 'https://member.bilibili.com/platform/upload/text/init',
+    hint: '专栏投稿入口若变更，请从创作中心进入「投稿」选择图文/专栏。'
+  }
+]
+
+const publishDialogVisible = ref(false)
+const publishPlatformKey = ref('xiaohongshu')
+const publishTitle = ref('')
+const publishCopyAsPlain = ref(false)
+const publishRegisterLoading = ref(false)
+
+const selectedPublishPlatform = computed(() =>
+  publishPlatforms.find((p) => p.key === publishPlatformKey.value) || null
+)
+
+/** 粗略将 Markdown 转为纯文本，便于粘贴到只支持纯文本的框 */
+const markdownToPlainText = (md) => {
+  if (md == null) return ''
+  let s = String(md)
+  s = s.replace(/\r\n/g, '\n')
+  s = s.replace(/^#{1,6}\s+/gm, '')
+  s = s.replace(/\*\*([^*]+)\*\*/g, '$1')
+  s = s.replace(/\*([^*]+)\*/g, '$1')
+  s = s.replace(/~~([^~]+)~~/g, '$1')
+  s = s.replace(/```[\s\S]*?```/g, (block) => block.replace(/```\w*\n?/g, '').replace(/```/g, ''))
+  s = s.replace(/`([^`]+)`/g, '$1')
+  s = s.replace(/^\s{0,3}[-*+]\s+/gm, '')
+  s = s.replace(/^\s*\d+\.\s+/gm, '')
+  s = s.replace(/\[([^\]]+)]\([^)]+\)/g, '$1')
+  s = s.replace(/\n{3,}/g, '\n\n')
+  return s.trim()
+}
+
+const getPublishBodyText = () => {
+  const tab = getActiveTab()
+  const raw = tab?.content ?? ''
+  return publishCopyAsPlain.value ? markdownToPlainText(raw) : raw
+}
+
+const openPublishDialog = () => {
+  const tab = getActiveTab()
+  if (!tab || !String(tab.content || '').trim()) {
+    ElMessage.warning('当前标签正文为空，无法发布')
+    return
+  }
+  publishTitle.value = (tab.title || '').trim() || '未命名'
+  publishPlatformKey.value = 'xiaohongshu'
+  publishCopyAsPlain.value = false
+  publishDialogVisible.value = true
+}
+
+const copyAndOpenPublishPage = async () => {
+  const p = selectedPublishPlatform.value
+  if (!p) {
+    ElMessage.warning('请选择平台')
+    return
+  }
+  const text = getPublishBodyText()
+  if (!text.trim()) {
+    ElMessage.warning('没有可复制的内容')
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(text)
+    window.open(p.url, '_blank', 'noopener,noreferrer')
+    ElMessage.success(`已复制正文，已打开发布页：${p.name}。请在浏览器中登录后粘贴发布。`)
+    publishDialogVisible.value = false
+  } catch (e) {
+    console.error(e)
+    ElMessage.error('复制失败，请检查浏览器权限或手动全选复制')
+  }
+}
+
+const registerPublishFromEditor = async () => {
+  const p = selectedPublishPlatform.value
+  const tab = getActiveTab()
+  if (!p || !tab) return
+  const content = tab.content ?? ''
+  if (!content.trim()) {
+    ElMessage.warning('当前标签正文为空')
+    return
+  }
+  publishRegisterLoading.value = true
+  try {
+    await addPublishHistory({
+      platformName: p.name,
+      title: (publishTitle.value || tab.title || '未命名').trim(),
+      content,
+      publishUrl: '',
+      status: 'recorded',
+      remark: '自 Markdown 编辑器发布向导登记'
+    })
+    ElMessage.success('已写入「历史发布」，可在侧栏进入补充链接与状态')
+    publishDialogVisible.value = false
+  } catch {
+    /* 错误由拦截器提示 */
+  } finally {
+    publishRegisterLoading.value = false
+  }
+}
 
 /** 跳转到文章美化，并把当前标签页内容带过去 */
 const goPolish = () => {
@@ -708,5 +889,20 @@ onBeforeUnmount(() => {
   background: #f5f7fa;
   padding: 8px 12px 0;
   border-bottom: 1px solid #ebeef5;
+}
+
+.publish-guide-tip {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: #606266;
+}
+.publish-guide-form {
+  margin-top: 8px;
+}
+.publish-platform-hint {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
 }
 </style>
