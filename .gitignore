@@ -41,3 +41,4 @@ src/main/resources/db/migration_add_toutiao_copy_only.sql
 /admin-ui/.gitignore
 /.workbuddy/memory/2026-04-05.md
 /.workbuddy/memory/MEMORY.md
+/.workbuddy/
