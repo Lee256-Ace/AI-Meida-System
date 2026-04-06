@@ -273,6 +273,7 @@ const loadAccounts = async () => {
 
 onMounted(() => {
   attachSortCaretTips()
+  loadAccounts()
 })
 
 watch([() => tableData.value.length, () => filteredList.value.length, () => displayedTableData.value.length, loading], () => {
@@ -332,8 +333,6 @@ const onDelete = async (row) => {
   }
   await runRowAction(row, 'del', () => deleteAppUser(row.id))
 }
-
-loadAccounts()
 </script>
 
 <style scoped>

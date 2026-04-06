@@ -115,7 +115,9 @@
       <template #footer>
         <el-button @click="publishDialogVisible = false">关闭</el-button>
         <el-button :loading="publishRegisterLoading" @click="registerPublishFromEditor">登记到历史发布</el-button>
-        <el-button type="primary" @click="copyAndOpenPublishPage">复制正文并打开发布页</el-button>
+        <el-button type="primary" :loading="publishCopyOpenLoading" @click="copyAndOpenPublishPage">
+          复制正文并打开发布页
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -224,6 +226,7 @@ const publishPlatformKey = ref('xiaohongshu')
 const publishTitle = ref('')
 const publishCopyAsPlain = ref(false)
 const publishRegisterLoading = ref(false)
+const publishCopyOpenLoading = ref(false)
 
 const selectedPublishPlatform = computed(() =>
   publishPlatforms.find((p) => p.key === publishPlatformKey.value) || null
@@ -265,6 +268,23 @@ const openPublishDialog = () => {
   publishDialogVisible.value = true
 }
 
+/** 构建写入 publish_history 的请求体（正文为当前标签完整 Markdown） */
+const buildPublishHistoryPayload = (remark) => {
+  const p = selectedPublishPlatform.value
+  const tab = getActiveTab()
+  if (!p || !tab) return null
+  const content = tab.content ?? ''
+  if (!content.trim()) return null
+  return {
+    platformName: p.name,
+    title: (publishTitle.value || tab.title || '未命名').trim(),
+    content,
+    publishUrl: '',
+    status: 'recorded',
+    remark: remark || '自 Markdown 编辑器发布向导登记'
+  }
+}
+
 const copyAndOpenPublishPage = async () => {
   const p = selectedPublishPlatform.value
   if (!p) {
@@ -276,36 +296,47 @@ const copyAndOpenPublishPage = async () => {
     ElMessage.warning('没有可复制的内容')
     return
   }
+  const historyPayload = buildPublishHistoryPayload('自编辑器：复制正文并打开发布页')
+  publishCopyOpenLoading.value = true
   try {
     await navigator.clipboard.writeText(text)
     window.open(p.url, '_blank', 'noopener,noreferrer')
-    ElMessage.success(`已复制正文，已打开发布页：${p.name}。请在浏览器中登录后粘贴发布。`)
+    let savedOk = false
+    if (historyPayload) {
+      try {
+        await addPublishHistory(historyPayload)
+        savedOk = true
+      } catch {
+        /* 接口错误由拦截器提示；复制与打开仍视为成功 */
+      }
+    }
+    if (savedOk) {
+      ElMessage.success(
+        `已复制正文、已打开发布页（${p.name}），并已保存至「历史发布」。登录后粘贴即可发布。`
+      )
+    } else {
+      ElMessage.success(
+        `已复制正文，已打开发布页：${p.name}。请在浏览器中登录后粘贴发布。（发布记录未写入时可从侧栏「历史发布」手动登记）`
+      )
+    }
     publishDialogVisible.value = false
   } catch (e) {
     console.error(e)
     ElMessage.error('复制失败，请检查浏览器权限或手动全选复制')
+  } finally {
+    publishCopyOpenLoading.value = false
   }
 }
 
 const registerPublishFromEditor = async () => {
-  const p = selectedPublishPlatform.value
-  const tab = getActiveTab()
-  if (!p || !tab) return
-  const content = tab.content ?? ''
-  if (!content.trim()) {
+  const payload = buildPublishHistoryPayload('自 Markdown 编辑器发布向导登记')
+  if (!payload) {
     ElMessage.warning('当前标签正文为空')
     return
   }
   publishRegisterLoading.value = true
   try {
-    await addPublishHistory({
-      platformName: p.name,
-      title: (publishTitle.value || tab.title || '未命名').trim(),
-      content,
-      publishUrl: '',
-      status: 'recorded',
-      remark: '自 Markdown 编辑器发布向导登记'
-    })
+    await addPublishHistory(payload)
     ElMessage.success('已写入「历史发布」，可在侧栏进入补充链接与状态')
     publishDialogVisible.value = false
   } catch {

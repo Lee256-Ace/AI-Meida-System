@@ -2,6 +2,20 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { login, getUserInfo, logout } from '@/api/auth'
 
+/** 仅解析 JWT payload（与后端 JwtUtil 中 claims 一致：userId/username/userType），不校验签名 */
+function parseJwtPayload(token) {
+  if (!token || typeof token !== 'string') return null
+  try {
+    const part = token.split('.')[1]
+    if (!part) return null
+    const b64 = part.replace(/-/g, '+').replace(/_/g, '/')
+    const pad = b64.length % 4 ? '='.repeat(4 - (b64.length % 4)) : ''
+    return JSON.parse(atob(b64 + pad))
+  } catch {
+    return null
+  }
+}
+
 export const useUserStore = defineStore('user', () => {
   // 状态
   const token = ref(localStorage.getItem('token') || '')
@@ -27,7 +41,19 @@ export const useUserStore = defineStore('user', () => {
           const result = await login(loginData) // result 就是 { token, userInfo }
           if (result && result.token) {
               setToken(result.token)          // 使用后端返回的真实 token
-              setUserInfo(result.userInfo)
+              let info = result.userInfo
+              if (!info || info.id == null || !info.userType) {
+                const p = parseJwtPayload(result.token)
+                if (p && p.userId != null) {
+                  info = {
+                    ...(info || {}),
+                    id: Number(p.userId),
+                    username: p.username ?? info?.username ?? '',
+                    userType: p.userType ?? info?.userType ?? 'user'
+                  }
+                }
+              }
+              setUserInfo(info || {})
               return { success: true }
           } else {
               // 如果返回的数据中没有 token，说明后端格式可能仍有问题
@@ -73,14 +99,32 @@ export const useUserStore = defineStore('user', () => {
     localStorage.removeItem('userInfo')
   }
 
-  // 检查token有效性
+  // 检查 token：本地 userInfo 不完整时用 JWT 补全（避免首登后路由/请求读到空 id）
   const checkTokenValidity = () => {
-    if (token.value && (!userInfo.value || !userInfo.value.id)) {
-      // 如果有token但没有用户信息，清除token
-      clearUserData()
-      return false
+    if (!token.value) return false
+
+    const info = userInfo.value
+    const needHydrate =
+      !info ||
+      info.id == null ||
+      info.userType == null ||
+      info.userType === ''
+
+    if (needHydrate) {
+      const p = parseJwtPayload(token.value)
+      if (!p || p.userId == null) {
+        clearUserData()
+        return false
+      }
+      setUserInfo({
+        ...(info && typeof info === 'object' ? info : {}),
+        id: Number(p.userId),
+        username: p.username ?? info?.username ?? '',
+        userType: p.userType ?? info?.userType ?? 'user'
+      })
     }
-    return !!token.value
+
+    return true
   }
 
   return {
