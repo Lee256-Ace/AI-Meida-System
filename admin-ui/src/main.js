@@ -8,6 +8,14 @@ import App from './App.vue'
 import router from './router'
 import './style.css'
 
+// 登录态已改为 sessionStorage；清理历史上 localStorage 里的 token，避免旧逻辑下“换会话仍自动登录”
+try {
+  localStorage.removeItem('token')
+  localStorage.removeItem('userInfo')
+} catch (_) {
+  /* ignore */
+}
+
 const app = createApp(App)
 
 // 注册Element Plus图标

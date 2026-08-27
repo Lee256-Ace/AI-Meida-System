@@ -44,7 +44,7 @@ public class GenerationService {
     @Value("${coze.workflow.base-url:http://localhost:5000}")
     private String cozeBaseUrl;
 
-    @Value("${coze.workflow.endpoint-path:/run}")
+    @Value(" ${coze.workflow.endpoint-path:/run}")
     private String cozeEndpointPath;
 
     @Value("${coze.workflow.timeout-seconds:300}")

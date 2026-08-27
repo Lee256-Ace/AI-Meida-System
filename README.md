@@ -47,41 +47,24 @@
   - `GET /api/error-log/{id}`：单条详情（含完整 `error_detail` 堆栈）。
   - `DELETE /api/error-log/{id}`：删除单条。
 
-### 管理后台（Vue）
-
-- **仪表盘**：数据概览（ECharts）。
-- **文章平台管理 / 网络热点素材**：维护平台与素材数据。
-- **历史发布**：记录从 Markdown 编辑器等入口发起的发布操作，便于回溯。
-- **编辑文案（Markdown）**：在线编辑、预览与发布向导（含复制、打开发布页等）。
-- **用户管理**（仅管理员）：汇总 `admins` 与 `users` 账号列表，支持普通用户封禁/解禁/删除；接口需携带有效 JWT 且 `userType` 为 `admin`。
-- **个人中心**：查看与更新当前账号信息。
-- **登录 / 注册**：管理员登录；访客可注册普通用户（写入 `users` 表）。
-
-### 登录态说明（前端）
-
-- 使用 **Pinia** 保存 `token` 与 `userInfo`，请求经 Axios 拦截器附加 `Authorization: Bearer <token>`。
-- 若本地 `userInfo` 与 token 不同步（例如缺少 `id` / `userType`），路由守卫会从 **JWT payload** 中补全后再放行，避免首次登录后立即进入「用户管理」等页面时列表请求失败。
-- 若更换过后端 **JWT 密钥** 或长期使用旧 token，可能出现「请先登录 / 仅管理员可操作」：退出登录或清除本站本地存储后重新登录即可。
-
 详见 [doc/coze-useage.md](doc/coze-useage.md)（Coze 入参说明）、[doc/toutiao-issue-analysis.md](doc/toutiao-issue-analysis.md)（今日头条排查）。
 
 ## 项目结构
 
 ```
-项目根目录/
+aims/
 ├── src/main/
 │   ├── java/com/product/
-│   │   ├── controller/     # AiController、ErrorLogController、AuthController、UserManagementController 等
-│   │   ├── service/        # GenerationService、PolishService、ContinuationService、CozeWorkflowClient、ErrorLogService、UserManagementService 等
-│   │   ├── mapper/         # MyBatis Mapper 与 XML
-│   │   └── entity/         # 任务实体、ErrorLog、AppUser、Admin 等
+│   │   ├── controller/     # AiController、ErrorLogController、AuthController 等
+│   │   ├── service/        # GenerationService、PolishService、ContinuationService、CozeWorkflowClient、ErrorLogService
+│   │   ├── mapper/         # GenerationMapper、PolishMapper、ContinuationMapper、ErrorLogMapper
+│   │   └── entity/        # GenerationTask、PolishTask、ContinuationTask、ErrorLog
 │   └── resources/
 │       ├── application.yml
-│       ├── schema.sql      # 建表
-│       ├── mapper/         # MyBatis XML
-│       └── db/             # init.sql 等迁移/初始化脚本
-├── admin-ui/               # Vue3 管理前端（Vite，默认端口 3000，/api 代理至 8080）
-├── doc/                    # 文档（coze-useage、toutiao 分析等）
+│       ├── schema.sql     # 建表（含 ai_error_log）
+│       └── db/            # 迁移脚本（如 migration_add_ai_error_log.sql）
+├── admin-ui/              # Vue3 管理前端
+├── doc/                   # 文档（coze-useage、toutiao 分析等）
 └── README.md
 ```
 
@@ -96,7 +79,7 @@
 ### 2. 数据库初始化
 
 - 使用库名 **basesys**，执行 `src/main/resources/schema.sql` 建表（含 `ai_generation`、`ai_polish`、`ai_continuation`、**ai_error_log**）。
-- 若库已存在且缺少表或列，可**一次性执行** `src/main/resources/db/init.sql`：创建 `ai_error_log`、业务扩展表（如 `publish_history`、`users` 等，以脚本内实际语句为准），为 `ai_generation` 补充各平台文案列（`douyin_copy` / `xiaohongshu_copy` / `video_account_copy` / `toutiao_copy`），为 `ai_polish`、`ai_continuation` 补充 `platform` 列。可重复执行，已存在则跳过。
+- 若库已存在且缺少表或列，可**一次性执行** `src/main/resources/db/init.sql`：创建 `ai_error_log` 表（若不存在），为 `ai_generation` 补充各平台文案列（`douyin_copy` / `xiaohongshu_copy` / `video_account_copy` / `toutiao_copy`），为 `ai_polish`、`ai_continuation` 补充 `platform` 列。可重复执行，已存在则跳过。
 
 ### 3. Coze 工作流配置
 
@@ -108,13 +91,10 @@
 
 ### 4. 后端启动
 
-在项目**根目录**（含 `pom.xml`）执行：
-
 ```bash
+cd aims
 mvn spring-boot:run
 ```
-
-默认 API 前缀一般为 `/api`（以 `application.yml` 为准）。
 
 ### 5. 前端启动
 
@@ -123,8 +103,6 @@ cd admin-ui
 npm install
 npm run dev
 ```
-
-开发环境下 `vite.config.js` 将 **`/api` 代理到 `http://localhost:8080`**，因此需**先启动 Spring Boot**，否则浏览器控制台会出现代理连接被拒绝（`ECONNREFUSED`）类错误。
 
 ### 6. 访问
 
@@ -135,8 +113,7 @@ npm run dev
 
 ## 测试账号
 
-- 管理员：默认用户名 `admin`，密码见 `application.yml`（如 `app.default-password`）或登录页提示；**仅用户名为 `admin` 的账号在 JWT 与权限上视为管理员**（可访问用户管理、仪表盘等）。
-- 普通用户：可通过登录页「注册普通用户」创建，写入 `users` 表。
+- 管理员：用户名 `admin`，密码见配置（如 `application.yml` 中 `app.default-password` 或项目说明）。
 
 ## 部署说明
 

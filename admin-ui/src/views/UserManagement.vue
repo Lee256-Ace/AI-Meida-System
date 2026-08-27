@@ -272,8 +272,8 @@ const loadAccounts = async () => {
 }
 
 onMounted(() => {
-  attachSortCaretTips()
   loadAccounts()
+  attachSortCaretTips()
 })
 
 watch([() => tableData.value.length, () => filteredList.value.length, () => displayedTableData.value.length, loading], () => {

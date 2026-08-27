@@ -2,24 +2,15 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { login, getUserInfo, logout } from '@/api/auth'
 
-/** 仅解析 JWT payload（与后端 JwtUtil 中 claims 一致：userId/username/userType），不校验签名 */
-function parseJwtPayload(token) {
-  if (!token || typeof token !== 'string') return null
-  try {
-    const part = token.split('.')[1]
-    if (!part) return null
-    const b64 = part.replace(/-/g, '+').replace(/_/g, '/')
-    const pad = b64.length % 4 ? '='.repeat(4 - (b64.length % 4)) : ''
-    return JSON.parse(atob(b64 + pad))
-  } catch {
-    return null
-  }
-}
+/** 仅当前标签页有效，关闭标签或新开站点后需重新登录（不再跨浏览器会话持久化） */
+const authStorage = sessionStorage
+const TOKEN_KEY = 'token'
+const USER_INFO_KEY = 'userInfo'
 
 export const useUserStore = defineStore('user', () => {
   // 状态
-  const token = ref(localStorage.getItem('token') || '')
-  const userInfo = ref(JSON.parse(localStorage.getItem('userInfo') || '{}'))
+  const token = ref(authStorage.getItem(TOKEN_KEY) || '')
+  const userInfo = ref(JSON.parse(authStorage.getItem(USER_INFO_KEY) || '{}'))
 
   // 计算属性
   const isLoggedIn = computed(() => !!token.value)
@@ -28,12 +19,12 @@ export const useUserStore = defineStore('user', () => {
   // 方法
   const setToken = (newToken) => {
     token.value = newToken
-    localStorage.setItem('token', newToken)
+    authStorage.setItem(TOKEN_KEY, newToken)
   }
 
   const setUserInfo = (info) => {
     userInfo.value = info
-    localStorage.setItem('userInfo', JSON.stringify(info))
+    authStorage.setItem(USER_INFO_KEY, JSON.stringify(info))
   }
 
   const loginAction = async (loginData) => {
@@ -41,19 +32,7 @@ export const useUserStore = defineStore('user', () => {
           const result = await login(loginData) // result 就是 { token, userInfo }
           if (result && result.token) {
               setToken(result.token)          // 使用后端返回的真实 token
-              let info = result.userInfo
-              if (!info || info.id == null || !info.userType) {
-                const p = parseJwtPayload(result.token)
-                if (p && p.userId != null) {
-                  info = {
-                    ...(info || {}),
-                    id: Number(p.userId),
-                    username: p.username ?? info?.username ?? '',
-                    userType: p.userType ?? info?.userType ?? 'user'
-                  }
-                }
-              }
-              setUserInfo(info || {})
+              setUserInfo(result.userInfo)
               return { success: true }
           } else {
               // 如果返回的数据中没有 token，说明后端格式可能仍有问题
@@ -95,35 +74,28 @@ export const useUserStore = defineStore('user', () => {
   const clearUserData = () => {
     token.value = ''
     userInfo.value = {}
-    localStorage.removeItem('token')
-    localStorage.removeItem('userInfo')
+    authStorage.removeItem(TOKEN_KEY)
+    authStorage.removeItem(USER_INFO_KEY)
   }
 
-  // 检查 token：本地 userInfo 不完整时用 JWT 补全（避免首登后路由/请求读到空 id）
+  // 检查 token 与本地用户信息是否自洽（权限以 JWT 为准，不因缺少 id 就整段清空）
   const checkTokenValidity = () => {
     if (!token.value) return false
-
     const info = userInfo.value
-    const needHydrate =
-      !info ||
-      info.id == null ||
-      info.userType == null ||
-      info.userType === ''
-
-    if (needHydrate) {
-      const p = parseJwtPayload(token.value)
-      if (!p || p.userId == null) {
-        clearUserData()
-        return false
-      }
-      setUserInfo({
-        ...(info && typeof info === 'object' ? info : {}),
-        id: Number(p.userId),
-        username: p.username ?? info?.username ?? '',
-        userType: p.userType ?? info?.userType ?? 'user'
-      })
+    if (!info || typeof info !== 'object') {
+      clearUserData()
+      return false
     }
-
+    if (Object.keys(info).length === 0) {
+      clearUserData()
+      return false
+    }
+    const idOk = info.id != null && info.id !== ''
+    const typeOk = info.userType != null && info.userType !== ''
+    if (!idOk && !typeOk) {
+      clearUserData()
+      return false
+    }
     return true
   }
 

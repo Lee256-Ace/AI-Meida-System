@@ -17,7 +17,7 @@ public class ProductApplication {
     public static void main(String[] args) {
         SpringApplication.run(ProductApplication.class, args);
         System.out.println("后台管理系统启动成功！");
-        System.out.println("访问地址: http://localhost:8080/api");
+        System.out.println("访问地址: http://localhost:8000/api");
         System.out.println("Druid监控: http://localhost:8080/api/druid");
     }
-} 
+}
