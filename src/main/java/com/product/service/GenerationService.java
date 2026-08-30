@@ -22,6 +22,7 @@ import java.io.InputStreamReader;
 import java.net.ConnectException;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -40,6 +41,7 @@ public class GenerationService {
     private final GenerationMapper generationMapper;
     private final RestTemplate restTemplate;
     private final ErrorLogService errorLogService;
+    private final QwenWorkflowClient qwenWorkflowClient;
 
     @Value("${coze.workflow.base-url:http://localhost:5000}")
     private String cozeBaseUrl;
@@ -63,7 +65,7 @@ public class GenerationService {
     public Long createTask(String prompt, String style, String theme) {
         GenerationTask task = new GenerationTask();
         task.setPrompt(prompt);
-        task.setModel("coze-workflow");
+        task.setModel("qwen");
         task.setStatus(0);
         task.setStyle(style);
         task.setTheme(theme);
@@ -76,7 +78,6 @@ public class GenerationService {
 
     @Async
     public void processTask(Long taskId, String prompt, List<String> selectedPlatforms, String targetAudience, StreamHandler handler) {
-        StringBuilder reasoning = new StringBuilder();
         StringBuilder content = new StringBuilder();
         Set<String> platformFilter = (selectedPlatforms != null && !selectedPlatforms.isEmpty())
                 ? new HashSet<>(selectedPlatforms) : null;
@@ -84,173 +85,57 @@ public class GenerationService {
         try {
             if (handler != null) handler.onReasoning("正在生成多平台文案（抖音、小红书、视频号、今日头条）…");
 
-            String path = (cozeEndpointPath == null || cozeEndpointPath.isBlank()) ? "/run" : cozeEndpointPath;
-            if (!path.startsWith("/")) path = "/" + path;
-            String url = cozeBaseUrl.replaceAll("/$", "") + path;
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("topic", prompt);
             List<String> platformList = (selectedPlatforms != null && !selectedPlatforms.isEmpty())
                     ? selectedPlatforms
                     : Arrays.asList(PLATFORM_KEYS);
-            payload.put("platform_select", platformList);
-            payload.put("operations", Arrays.asList("generate"));
-            // 官方默认：target_audience 大众
-            payload.put("target_audience", (targetAudience != null && !targetAudience.isBlank()) ? targetAudience.trim() : "大众");
+            List<String> labels = new ArrayList<>();
+            for (String key : platformList) {
+                String label = PLATFORM_LABELS.get(key);
+                if (label != null) labels.add(label);
+            }
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            String apiKey = getCozeApiKey();
-            if (apiKey != null && !apiKey.isBlank()) {
-                headers.setBearerAuth(apiKey.trim());
-                if (log.isDebugEnabled()) log.debug("Coze API Key 已设置，请求 URL: {}", url);
-            } else {
-                log.warn("COZE_WORKLOAD_IDENTITY_API_KEY 未设置，请求 Coze 将返回 401");
-            }
-            Map<String, Object> body;
-            if (path.contains("stream_run")) {
-                headers.set(HttpHeaders.ACCEPT, "text/event-stream");
-                body = postStreamRunAndParseSse(url, headers, payload);
-            } else {
-                HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
-                ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
-                        url,
-                        HttpMethod.POST,
-                        request,
-                        new ParameterizedTypeReference<Map<String, Object>>() {}
-                );
-                if (response.getStatusCode() != HttpStatusCode.valueOf(200) || response.getBody() == null) {
-                    throw new RuntimeException("Coze 工作流返回异常: " + response.getStatusCode());
+            String systemPrompt = "你是一名资深的社交媒体文案专家，擅长为抖音、小红书、视频号、今日头条等平台撰写高转化文案。"
+                    + "请严格按以下格式输出：每个平台一个段落，段首单独一行使用【平台名】作为标题，"
+                    + "平台名仅限：抖音、小红书、视频号、今日头条。不要输出任何额外解释、前言或结语。";
+
+            StringBuilder userPrompt = new StringBuilder();
+            userPrompt.append("请根据以下主题生成多平台文案：\n").append(prompt).append("\n");
+            userPrompt.append("目标读者：").append(targetAudience != null && !targetAudience.isBlank() ? targetAudience.trim() : "大众").append("\n");
+            userPrompt.append("需要生成的平台：").append(String.join("、", labels)).append("\n");
+            userPrompt.append("请开始输出。");
+
+            qwenWorkflowClient.generateStream(systemPrompt, userPrompt.toString(), new QwenWorkflowClient.StreamHandler() {
+                @Override
+                public void onContent(String text) {
+                    content.append(text);
+                    if (handler != null) handler.onContent(text);
                 }
-                body = response.getBody();
-            }
-            if (body == null) {
-                throw new RuntimeException("Coze 工作流返回为空");
-            }
-            if (log.isDebugEnabled()) {
-                log.debug("Coze body keys: {}", body.keySet());
-            }
-            String formatted;
-            Map<String, String> platformCopies = null;
-            @SuppressWarnings("unchecked")
-            Map<String, Map<String, Object>> finalResult = resolveFinalResultFromBody(body);
-            if (finalResult == null) {
-                Object contentObj = body.get("content");
-                String contentStr = contentObj != null ? contentObj.toString().trim() : "";
-                if (!contentStr.isEmpty()) {
-                    finalResult = parseFinalResultFromContentString(contentStr);
-                }
-            }
-            if (finalResult != null) {
-                if (log.isDebugEnabled()) {
-                    log.debug("final_result platforms: {}", finalResult.keySet());
-                }
-                formatted = formatFinalResult(finalResult, platformFilter);
-                platformCopies = extractPlatformCopies(finalResult, platformFilter);
-                if (log.isDebugEnabled() && platformCopies != null) {
-                    log.debug("platformCopies for DB: {}", platformCopies.keySet());
-                }
-            } else {
-                // 兜底：content 为纯段落文本（如【抖音】...【小红书】...）
-                Object contentObj = body.get("content");
-                String fullContent = contentObj != null ? contentObj.toString().trim() : "";
-                if (!fullContent.isEmpty()) {
-                    formatted = filterContentByPlatforms(fullContent, platformFilter);
-                    platformCopies = extractPlatformSectionsFromContent(fullContent, platformFilter);
-                } else {
-                    // Coze 可能只返回 markdown_content / platform_markdowns（无 final_result、无 content），直接从两者构建 platformCopies
-                    platformCopies = buildPlatformCopiesFromMarkdownsOnly((Map<String, Object>) body, platformFilter);
+                @Override
+                public void onComplete(String fullText) {
+                    String full = fullText != null ? fullText.trim() : "";
+                    Map<String, String> platformCopies = extractPlatformSectionsFromContent(full, platformFilter);
+                    String formatted;
                     if (platformCopies != null && !platformCopies.isEmpty()) {
                         formatted = formatFromPlatformCopies(platformCopies, platformFilter);
                     } else {
-                        Object md = body.get("markdown_content");
-                        String mdStr = md instanceof CharSequence ? md.toString().trim() : "";
-                        if (!mdStr.isEmpty()) {
-                            formatted = mdStr;
-                            platformCopies = new LinkedHashMap<>();
-                            platformCopies.put("all", mdStr);
-                        } else {
-                            throw new RuntimeException("Coze 工作流未返回 final_result、content 或 markdown_content");
-                        }
+                        formatted = full;
                     }
+                    saveResult(taskId, "", formatted, null, platformCopies);
+                    if (handler != null) handler.onComplete();
                 }
-            }
-            // 从整棵 body 递归补齐各平台文案（兼容 Coze 返回结构不一致时漏掉部分平台）
-            Map<String, String> fromBody = (body instanceof Map) ? fillPlatformCopiesFromBody((Map<String, Object>) body, platformFilter) : new LinkedHashMap<>();
-            if (!fromBody.isEmpty()) {
-                if (platformCopies == null) platformCopies = new LinkedHashMap<>();
-                for (String k : fromBody.keySet()) {
-                    String v = fromBody.get(k);
-                    if (v == null || v.trim().isEmpty()) continue;
-                    if (!platformCopies.containsKey(k) || platformCopies.get(k) == null || platformCopies.get(k).trim().isEmpty()) {
-                        platformCopies.put(k, v);
-                    }
+                @Override
+                public void onError(String message) {
+                    saveResult(taskId, "", content.toString(), message, null);
+                    String display = errorLogService.logAndMessage("generate", "千问文案生成", message, null, "taskId=" + taskId);
+                    if (handler != null) handler.onError(display);
                 }
-            }
-            // 用户勾选今日头条时：再尝试从 body 取 toutiao，仍无则写占位说明
-            if (platformFilter != null && platformFilter.contains("toutiao")) {
-                if (platformCopies == null) platformCopies = new LinkedHashMap<>();
-                String toutiaoCopy = platformCopies.get("toutiao");
-                if (toutiaoCopy == null || toutiaoCopy.trim().isEmpty()) {
-                    Object top = firstNonBlank(body, "toutiao_copy", "toutiaoCopy");
-                    if (top != null && top.toString().trim().length() > 0) {
-                        platformCopies.put("toutiao", top.toString().trim());
-                        toutiaoCopy = platformCopies.get("toutiao");
-                    }
-                }
-                if ((toutiaoCopy == null || toutiaoCopy.trim().isEmpty()) && body instanceof Map) {
-                    String fromTree = findToutiaoCopyRecursively((Map<String, Object>) body);
-                    if (fromTree != null && !fromTree.isEmpty()) {
-                        platformCopies.put("toutiao", fromTree);
-                        toutiaoCopy = fromTree;
-                    }
-                }
-                // 兜底：Coze 可能只返回 platform_markdowns 而 final_result 中今日头条因超时未写入（见 workflow-completeness-check）
-                if ((toutiaoCopy == null || toutiaoCopy.trim().isEmpty()) && body instanceof Map) {
-                    String fromPm = getTextFromPlatformMarkdowns((Map<String, Object>) body, "toutiao");
-                    if (fromPm != null && !fromPm.trim().isEmpty()) {
-                        platformCopies.put("toutiao", fromPm.trim());
-                        toutiaoCopy = fromPm.trim();
-                    }
-                }
-                if ((toutiaoCopy == null || toutiaoCopy.trim().isEmpty()) && body instanceof Map) {
-                    String fromMd = extractToutiaoSectionFromMarkdownContent((Map<String, Object>) body);
-                    if (fromMd != null && !fromMd.trim().isEmpty()) {
-                        platformCopies.put("toutiao", fromMd.trim());
-                        toutiaoCopy = fromMd.trim();
-                    }
-                }
-                if ((toutiaoCopy == null || toutiaoCopy.trim().isEmpty()) && body instanceof Map) {
-                    String fromTree = findToutiaoMarkdownInTree((Map<String, Object>) body);
-                    if (fromTree != null && !fromTree.trim().isEmpty()) {
-                        platformCopies.put("toutiao", fromTree.trim());
-                        toutiaoCopy = fromTree.trim();
-                    }
-                }
-                if (toutiaoCopy == null || toutiaoCopy.trim().isEmpty()) {
-                    log.info("今日头条未解析到。body.keys={}, final_result.keys={}, has_platform_markdowns={}",
-                            body != null ? body.keySet() : "null",
-                            (body != null && body.get("final_result") instanceof Map) ? ((Map<?, ?>) body.get("final_result")).keySet() : "n/a",
-                            (body != null && body.get("platform_markdowns") instanceof Map) ? ((Map<?, ?>) body.get("platform_markdowns")).keySet() : "false");
-                    String placeholder = "今日头条文案本次未生成，请重试或联系管理员。";
-                    platformCopies.put("toutiao", placeholder);
-                    log.warn("Coze 未返回今日头条文案，已写入占位。请检查 Coze 工作流是否返回 final_result.toutiao 或 platform_markdowns.toutiao");
-                }
-            }
-            // 用合并后的 platformCopies 生成最终展示文案（含递归补齐与占位），保证前端能看到所有平台块
-            if (platformCopies != null && !platformCopies.isEmpty()) {
-                formatted = formatFromPlatformCopies(platformCopies, platformFilter);
-            }
-            content.append(formatted);
-            if (handler != null) handler.onContent(formatted);
-
-            saveResult(taskId, reasoning.toString(), content.toString(), null, platformCopies);
-            if (handler != null) handler.onComplete();
+            });
 
         } catch (Exception e) {
             log.error("文案生成失败", e);
-            String errMsg = toUserFriendlyError(e);
-            saveResult(taskId, reasoning.toString(), content.toString(), errMsg, null);
-            String displayMsg = errorLogService.logAndMessage("generate", "调用Coze或解析结果", errMsg, e, "taskId=" + taskId);
+            String errMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            saveResult(taskId, "", content.toString(), errMsg, null);
+            String displayMsg = errorLogService.logAndMessage("generate", "千问文案生成", errMsg, e, "taskId=" + taskId);
             if (handler != null) handler.onError(displayMsg);
         }
     }

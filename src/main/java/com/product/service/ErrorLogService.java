@@ -99,6 +99,7 @@ public class ErrorLogService {
             case "polish": return "文章美化";
             case "continue": return "文章续写";
             case "coze": return "Coze工作流";
+            case "qwen": return "千问大模型";
             case "auth": return "登录鉴权";
             default: return module;
         }

@@ -9,9 +9,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
 @Slf4j
 @Service
@@ -19,7 +16,7 @@ import java.util.Map;
 public class ContinuationService {
 
     private final ContinuationMapper continuationMapper;
-    private final CozeWorkflowClient cozeWorkflowClient;
+    private final QwenWorkflowClient qwenWorkflowClient;
     private final ErrorLogService errorLogService;
 
     @Transactional
@@ -28,7 +25,7 @@ public class ContinuationService {
         task.setOriginalContent(originalContent);
         task.setContextHint(contextHint);
         task.setPlatform(platform);
-        task.setModel("coze-workflow");
+        task.setModel("qwen");
         task.setStatus(0);
         task.setCreatedAt(LocalDateTime.now());
         continuationMapper.insert(task);
@@ -36,7 +33,7 @@ public class ContinuationService {
     }
 
     /**
-     * 续写：调用 Coze 工作流 operations=["extend"]，支持 extend_length、extend_style。
+     * 续写：调用通义千问大模型，将原 Coze 的 operations=["extend"] 载荷转换为自然语言提示词。
      * extend_length: 短篇/中等/长篇；extend_style: 保持原风格/更正式/更生动。
      */
     @Async
@@ -48,36 +45,32 @@ public class ContinuationService {
             return;
         }
 
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("operations", List.of("extend"));
-        payload.put("article_content", originalContent.trim());
-        payload.put("extend_length", extendLength != null && !extendLength.isBlank() ? extendLength.trim() : "中等");
-        payload.put("extend_style", extendStyle != null && !extendStyle.isBlank() ? extendStyle.trim() : "保持原风格");
+        String systemPrompt = "你是一名资深的中文内容创作者，擅长根据已有文章进行自然流畅的续写。仅输出续写正文，不要输出任何解释、前缀、标题或提示语。";
+        StringBuilder userPrompt = new StringBuilder();
+        userPrompt.append("请对以下文章进行续写：\n").append(originalContent.trim()).append("\n");
+        userPrompt.append("续写长度：").append(extendLength != null && !extendLength.isBlank() ? extendLength.trim() : "中等").append("\n");
+        userPrompt.append("续写风格：").append(extendStyle != null && !extendStyle.isBlank() ? extendStyle.trim() : "保持原风格").append("\n");
         if (contextHint != null && !contextHint.isBlank()) {
-            payload.put("context_hint", contextHint.trim());
+            userPrompt.append("续写方向提示：").append(contextHint.trim()).append("\n");
         }
+        userPrompt.append("请开始输出续写正文。");
 
-        cozeWorkflowClient.postStreamRun(payload, new CozeWorkflowClient.StreamHandler() {
+        qwenWorkflowClient.generateStream(systemPrompt, userPrompt.toString(), new QwenWorkflowClient.StreamHandler() {
             @Override
             public void onContent(String text) {
                 if (handler != null) handler.onContent(text);
             }
             @Override
-            public void onComplete(Map<String, Object> finalBody) {
-                // 官方输出优先：markdown_content、platform_markdowns.article，其次 extended_article
-                String continuation = CozeWorkflowClient.extractMainText(finalBody, "markdown_content", "extended_article", "content");
-                if (continuation.isEmpty()) continuation = CozeWorkflowClient.extractFromPlatformMarkdowns(finalBody, "article");
-                if (continuation.isEmpty() && finalBody != null && !finalBody.isEmpty()) {
-                    log.warn("续写解析结果为空，finalBody.keys={}，请检查 Coze 是否返回 markdown_content/extended_article 或 final_result.extended_article", finalBody.keySet());
-                }
-                String fullText = originalContent + "\n\n" + continuation;
-                saveResult(taskId, continuation, fullText.length(), platform, null);
+            public void onComplete(String fullText) {
+                String continuation = fullText != null ? fullText.trim() : "";
+                String fullArticle = originalContent + "\n\n" + continuation;
+                saveResult(taskId, continuation, fullArticle.length(), platform, null);
                 if (handler != null) handler.onComplete();
             }
             @Override
             public void onError(String message) {
                 saveResult(taskId, "", 0, platform, message);
-                String display = errorLogService.logAndMessage("continue", "Coze续写调用", message != null ? message : "续写失败", null, "taskId=" + taskId);
+                String display = errorLogService.logAndMessage("continue", "千问续写调用", message != null ? message : "续写失败", null, "taskId=" + taskId);
                 if (handler != null) handler.onError(display);
             }
         });

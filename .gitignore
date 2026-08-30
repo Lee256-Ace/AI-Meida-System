@@ -43,3 +43,4 @@ src/main/resources/db/migration_add_toutiao_copy_only.sql
 /.workbuddy/memory/MEMORY.md
 /.workbuddy/
 src/test
+.github/
