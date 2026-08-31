@@ -249,7 +249,7 @@ const fullContentForCopy = computed(() => {
   return genResult.content || ''
 })
 
-let evtSource = null
+let abortController = null
 
 const generate = async () => {
   const prompt = genForm.prompt.trim()
@@ -273,49 +273,89 @@ const generate = async () => {
   genResult.status = 'processing'
   genResult.taskId = '-'
 
-  if (evtSource) evtSource.close()
+  if (abortController) abortController.abort()
+  abortController = new AbortController()
 
-  evtSource = generateStream({
-    prompt,
-    platforms,
-    targetAudience: genForm.targetAudience || undefined
-  })
+  try {
+    const response = await generateStream({
+      prompt,
+      platforms,
+      targetAudience: genForm.targetAudience || undefined,
+      signal: abortController.signal
+    })
 
-  evtSource.addEventListener('taskId', (e) => {
-    genResult.taskId = '#' + e.data
-  })
+    if (!response.ok) {
+      throw new Error('HTTP ' + response.status)
+    }
 
-  evtSource.addEventListener('reasoning', (e) => {
-    genResult.reasoning += e.data
-  })
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let lastEvent = ''
 
-  evtSource.addEventListener('content', (e) => {
-    genResult.content += e.data
-  })
+    const processRawEvent = (rawEvent) => {
+      if (!rawEvent || !String(rawEvent).trim()) return
+      const lines = String(rawEvent).replace(/\r\n/g, '\n').split('\n')
+      let eventName = lastEvent
+      const dataLines = []
+      for (const line of lines) {
+        if (line.startsWith('event:')) {
+          eventName = line.slice(6).trim()
+        } else if (line.startsWith('data:')) {
+          dataLines.push(line.slice(5))
+        }
+      }
+      lastEvent = eventName || lastEvent
+      const data = dataLines.join('\n').trim()
 
-  evtSource.addEventListener('complete', async () => {
-    genResult.status = 'completed'
-    genLoading.value = false
-    evtSource.close()
-    const idStr = genResult.taskId.replace(/^#/, '')
-    const id = parseInt(idStr, 10)
-    if (!isNaN(id)) {
-      try {
-        const res = await getGenerationTask(id)
-        genResult.task = res || null
-      } catch (_) {
-        genResult.task = null
+      if (lastEvent === 'taskId') {
+        genResult.taskId = '#' + data
+      } else if (lastEvent === 'reasoning') {
+        genResult.reasoning += data
+      } else if (lastEvent === 'content') {
+        genResult.content += data
+      } else if (lastEvent === 'complete' && (data === '[DONE]' || data === 'done')) {
+        genResult.status = 'completed'
+        genLoading.value = false
+        const idStr = genResult.taskId.replace(/^#/, '')
+        const id = parseInt(idStr, 10)
+        if (!isNaN(id)) {
+          getGenerationTask(id).then(res => {
+            genResult.task = res || null
+          }).catch(() => {
+            genResult.task = null
+          })
+        }
+        ElMessage.success('生成完成')
+      } else if (lastEvent === 'error') {
+        genResult.status = 'error'
+        genLoading.value = false
+        ElMessage.error(data || '生成失败')
       }
     }
-    ElMessage.success('生成完成')
-  })
 
-  evtSource.addEventListener('error', () => {
-    genResult.status = 'error'
-    genLoading.value = false
-    evtSource.close()
-    ElMessage.error('生成失败')
-  })
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      buffer = buffer.replace(/\r\n/g, '\n')
+
+      let sepIndex
+      while ((sepIndex = buffer.indexOf('\n\n')) !== -1) {
+        const rawEvent = buffer.slice(0, sepIndex)
+        buffer = buffer.slice(sepIndex + 2)
+        processRawEvent(rawEvent)
+      }
+    }
+    if (buffer.trim()) processRawEvent(buffer)
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      genResult.status = 'error'
+      genLoading.value = false
+      ElMessage.error('生成失败')
+    }
+  }
 }
 
 const copyText = (text) => {
@@ -393,7 +433,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   cacheStore.saveWriting(genForm, genResult)
-  if (evtSource) evtSource.close()
+  if (abortController) abortController.abort()
 })
 </script>
 

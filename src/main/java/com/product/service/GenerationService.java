@@ -94,14 +94,19 @@ public class GenerationService {
                 if (label != null) labels.add(label);
             }
 
-            String systemPrompt = "你是一名资深的社交媒体文案专家，擅长为抖音、小红书、视频号、今日头条等平台撰写高转化文案。"
-                    + "请严格按以下格式输出：每个平台一个段落，段首单独一行使用【平台名】作为标题，"
-                    + "平台名仅限：抖音、小红书、视频号、今日头条。不要输出任何额外解释、前言或结语。";
+            String systemPrompt = "你是资深自媒体创作专家，精通抖音、小红书、视频号、今日头条。\n"
+                    + "为每个平台各写一篇 Markdown 文章，段首单独一行用【平台名】作标题（仅限：抖音、小红书、视频号、今日头条）。\n"
+                    + "正文用 Markdown：#/##/### 标题层级、**加粗**关键词、- 列表、--- 分隔线，适当用 emoji。\n"
+                    + "只输出文章本身，不要解释或前言。各平台字数与结构：\n"
+                    + "■ 抖音 约250字：## 口语化钩子标题 + 短句分段(多emoji) + 互动引导 + --- + ### 3~5个#话题。\n"
+                    + "■ 小红书 约380字：## 标题 + ### 引入/### 正文(种草、优缺点)/### 推荐建议(列表：推荐指数/性价比/适用人群)，多emoji口语化(姐妹们/宝子们)，结尾#话题。\n"
+                    + "■ 视频号 约550字：## 设问标题 + ### 引言(共鸣)/### 正文(论述)/### 结语(升华)，面对面聊天语气、有金句。\n"
+                    + "■ 今日头条 约600字：## 标题 + ### 导语(背景)/### 正文(数据事实)/### 结语(收束)，正式客观。";
 
             StringBuilder userPrompt = new StringBuilder();
-            userPrompt.append("请根据以下主题生成多平台文案：\n").append(prompt).append("\n");
+            userPrompt.append("请根据以下主题，为每个平台分别撰写一篇 Markdown 格式的完整文章：\n").append(prompt).append("\n\n");
             userPrompt.append("目标读者：").append(targetAudience != null && !targetAudience.isBlank() ? targetAudience.trim() : "大众").append("\n");
-            userPrompt.append("需要生成的平台：").append(String.join("、", labels)).append("\n");
+            userPrompt.append("需要生成的平台：").append(String.join("、", labels)).append("\n\n");
             userPrompt.append("请开始输出。");
 
             qwenWorkflowClient.generateStream(systemPrompt, userPrompt.toString(), new QwenWorkflowClient.StreamHandler() {

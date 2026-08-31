@@ -50,3 +50,11 @@ export function getArticleNewsAll() {
     method: 'get'
   })
 }
+
+// 使用千问大模型总结文章内容
+export function summarizeArticleNews(id) {
+  return request({
+    url: `/articleNews/${id}/summarize`,
+    method: 'get'
+  })
+}

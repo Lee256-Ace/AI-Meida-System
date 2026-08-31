@@ -10,11 +10,18 @@
 
       <!-- 搜索表单 -->
       <el-form :model="searchForm" :inline="true" class="search-form">
-        <el-form-item label="备注:">
-          <el-input v-model="searchForm.remark" placeholder="请输入备注" />
-        </el-form-item>
         <el-form-item label="新闻标题:">
           <el-input v-model="searchForm.title" placeholder="请输入新闻标题" />
+        </el-form-item>
+        <el-form-item label="热点分类:">
+          <el-select v-model="searchForm.type" placeholder="全部分类" clearable style="width: 200px">
+            <el-option
+              v-for="item in typeOptions"
+              :key="item"
+              :label="item"
+              :value="item"
+            />
+          </el-select>
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="search">搜索</el-button>
@@ -25,26 +32,32 @@
       <!-- 数据表格 -->
       <el-table :data="tableData" v-loading="loading" style="width: 100%">
         <el-table-column prop="id" label="ID" width="200"/>
-        <el-table-column prop="source" label="新闻来源" />
-        <el-table-column prop="title" label="新闻标题" width="200"/>
-        <!--        <el-table-column prop="content" label="新闻内容" />-->
-        <el-table-column prop="url" label="新闻链接" width="200"/>
-<!--        <el-table-column prop="pic" label="新闻图片" width="200"/>-->
-<!--        <el-table-column prop="hot" label="热度指数" width="100"/>-->
-        <el-table-column prop="type" label="新闻类型" width="200"/>
-<!--        <el-table-column label="新闻日期"width="200">-->
-<!--          <template #default="scope">-->
-<!--            <span>{{ formatDateTime(scope.row.newsDate) }}</span>-->
-<!--          </template>-->
-<!--        </el-table-column>-->
-        <el-table-column prop="media" label="媒体" />
-<!--        <el-table-column prop="picCount" label="图片数量" />-->
-<!--        <el-table-column prop="picList" label="图片列表" />-->
-<!--        <el-table-column prop="wordNum" label="选择多少字数以内的文章发布" />-->
-        <el-table-column prop="remark" label="备注" />
-        <el-table-column label="操作" width="200">
+        <el-table-column prop="source" label="新闻来源" width="100"/>
+        <el-table-column prop="title" label="新闻标题" width="220" show-overflow-tooltip/>
+        <el-table-column prop="type" label="热点分类" width="180" show-overflow-tooltip/>
+        <el-table-column label="新闻日期" width="170">
           <template #default="scope">
-<!--            <el-button type="primary" size="small" @click="openEditDialog(scope.row)">编辑</el-button>-->
+            <span>{{ formatDateTime(scope.row.newsDate) || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="热度" width="80" align="center">
+          <template #default="scope">
+            <span>{{ scope.row.hot != null ? scope.row.hot : '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="新闻链接" width="110">
+          <template #default="scope">
+            <el-link v-if="scope.row.url" type="primary" :href="scope.row.url" target="_blank">
+              查看原文
+            </el-link>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="media" label="媒体" width="120" show-overflow-tooltip/>
+        <el-table-column label="操作" width="230" fixed="right">
+          <template #default="scope">
+            <el-button type="success" size="small" :loading="scope.row.summarizing" @click="summarize(scope.row)">总结</el-button>
+            <el-button type="primary" size="small" @click="sendToGenerate(scope.row)">生成文章</el-button>
             <el-button type="danger" size="small" @click="deleteRecord(scope.row)">删除</el-button>
           </template>
         </el-table-column>
@@ -132,14 +145,40 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- 文章总结对话框 -->
+    <el-dialog v-model="summaryDialogVisible" title="文章内容总结" width="650px">
+      <div class="summary-title">{{ summaryTitle }}</div>
+      <div v-loading="summaryLoading" class="summary-content">{{ summaryText }}</div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="summaryDialogVisible = false">关闭</el-button>
+          <el-button type="primary" @click="sendSummaryToGenerate">发送至文案生成</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, reactive } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Delete, ZoomIn } from '@element-plus/icons-vue'
-import { getArticleNewsList, addArticleNews, updateArticleNews, deleteArticleNews } from '@/api/articleNews'
+import { getArticleNewsList, addArticleNews, updateArticleNews, deleteArticleNews, summarizeArticleNews } from '@/api/articleNews'
+
+const router = useRouter()
+
+// 热点分类选项（与后端 NewsTypeConstant 保持一致）
+const typeOptions = [
+  '新浪新闻（国内新闻）',
+  '新浪新闻（国际新闻）',
+  '新浪新闻（社会新闻）',
+  '新浪新闻（体育新闻）',
+  '新浪新闻（财经新闻）',
+  '新浪新闻（科技新闻）',
+  '新浪新闻（娱乐新闻）'
+]
 
 // 响应式数据
 const loading = ref(false)
@@ -149,10 +188,17 @@ const dialogTitle = ref('')
 const isEdit = ref(false)
 const formRef = ref()
 
+// 总结相关
+const summaryDialogVisible = ref(false)
+const summaryLoading = ref(false)
+const summaryText = ref('')
+const summaryTitle = ref('')
+const summaryNewsId = ref('')
+
 // 搜索表单
 const searchForm = reactive({
-  remark: '',
   title: '',
+  type: '',
 })
 
 // 表单数据
@@ -223,9 +269,57 @@ const search = () => {
 
 // 重置搜索
 const resetSearch = () => {
-  searchForm.remark = ''
   searchForm.title = ''
+  searchForm.type = ''
   search()
+}
+
+// 总结文章
+const summarize = async (row) => {
+  summaryNewsId.value = row.id
+  summaryTitle.value = row.title || ''
+  summaryDialogVisible.value = true
+  summaryLoading.value = true
+  summaryText.value = ''
+  try {
+    const result = await summarizeArticleNews(row.id)
+    summaryText.value = result || '暂无总结内容'
+  } catch (error) {
+    ElMessage.error('总结失败，请稍后重试')
+    summaryText.value = '总结失败，请稍后重试'
+  } finally {
+    summaryLoading.value = false
+  }
+}
+
+// 发送总结内容至文案生成窗口
+const sendSummaryToGenerate = () => {
+  const text = summaryText.value && summaryText.value.trim()
+  if (!text || text === '总结失败，请稍后重试') {
+    ElMessage.warning('请先成功总结文章内容')
+    return
+  }
+  const prompt = `请根据以下热点内容创作一篇相关文章：\n\n【热点标题】${summaryTitle.value}\n【内容总结】${text}`
+  router.push({
+    path: '/ai-writing/generate',
+    query: { prompt: encodeURIComponent(prompt) }
+  })
+}
+
+// 发送文章至文案生成窗口（未总结时先总结再跳转）
+const sendToGenerate = async (row) => {
+  const prompt = `请根据以下热点内容创作一篇相关文章：\n\n【热点标题】${row.title || ''}`
+  if (row.content) {
+    router.push({
+      path: '/ai-writing/generate',
+      query: { prompt: encodeURIComponent(prompt + `\n【原文内容】${row.content}`) }
+    })
+  } else {
+    router.push({
+      path: '/ai-writing/generate',
+      query: { prompt: encodeURIComponent(prompt) }
+    })
+  }
 }
 
 // 打开新增对话框
@@ -360,6 +454,26 @@ onMounted(() => {
 
 .search-form {
   margin-bottom: 20px;
+}
+
+.summary-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: #303133;
+  margin-bottom: 12px;
+}
+
+.summary-content {
+  min-height: 120px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 16px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  line-height: 1.8;
+  font-size: 14px;
+  color: #606266;
+  white-space: pre-wrap;
 }
 
 .image-upload-container {

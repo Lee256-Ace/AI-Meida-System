@@ -28,13 +28,17 @@ public class AiController {
 
     // ========== 文案生成 ==========
 
-    @GetMapping(value = "/generate/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter generateStream(
-            @RequestParam String prompt,
-            @RequestParam(defaultValue = "modern") String style,
-            @RequestParam(defaultValue = "light") String theme,
-            @RequestParam(required = false) String platforms,
-            @RequestParam(required = false) String targetAudience) {
+    @PostMapping(value = "/generate/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter generateStream(@RequestBody Map<String, String> body) {
+        String prompt = body.get("prompt");
+        String style = body.getOrDefault("style", "modern");
+        String theme = body.getOrDefault("theme", "light");
+        String platforms = body.get("platforms");
+        String targetAudience = body.get("targetAudience");
+
+        if (prompt == null || prompt.isBlank()) {
+            throw new IllegalArgumentException("prompt 不能为空");
+        }
 
         SseEmitter emitter = new SseEmitter(300000L);
         Long taskId = generationService.createTask(prompt, style, theme);

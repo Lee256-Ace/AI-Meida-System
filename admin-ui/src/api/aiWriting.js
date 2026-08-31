@@ -1,19 +1,22 @@
 // admin-ui/src/api/aiWriting.js
 import request from '@/utils/request'
 
-// 文案生成 - SSE 流式；platforms 为选中的平台数组，必须传以限制只生成/只返回这些平台
+// 文案生成 - 流式（POST + fetch 读取 SSE）；prompt 放在请求体，避免长 prompt 导致 URL 超长触发 431
 export function generateStream(params) {
     const platforms = (params.platforms && params.platforms.length)
         ? params.platforms
         : ['douyin', 'xiaohongshu', 'video_account', 'toutiao']
-    const query = new URLSearchParams({
+    const body = {
         prompt: params.prompt,
         platforms: platforms.join(',')
+    }
+    if (params.targetAudience) body.targetAudience = params.targetAudience
+    return fetch(`/api/generate/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: params.signal
     })
-    if (params.targetAudience) query.set('targetAudience', params.targetAudience)
-    const url = `/api/generate/stream?${query.toString()}`
-    console.log('SSE URL:', url)
-    return new EventSource(url)
 }
 
 // 文章美化 - 流式

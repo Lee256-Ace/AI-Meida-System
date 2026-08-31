@@ -33,6 +33,10 @@ public class QwenWorkflowClient {
     @Value("${qwen.model:qwen-plus}")
     private String model;
 
+    /** 摘要/总结使用的轻量模型，可通过 application.yml 的 qwen.summary-model 覆盖 */
+    @Value("${qwen.summary-model:qwen-turbo}")
+    private String summaryModel;
+
     public interface StreamHandler {
         /** 流式片段（可能多次回调） */
         void onContent(String text);
@@ -46,9 +50,23 @@ public class QwenWorkflowClient {
      * 阻塞式生成，返回完整文本；失败抛出 RuntimeException。
      */
     public String generate(String systemPrompt, String userPrompt) {
+        return generate(systemPrompt, userPrompt, model, null);
+    }
+
+    /**
+     * 使用轻量模型生成摘要，降低成本并限制输出长度。
+     */
+    public String generateSummary(String systemPrompt, String userPrompt, Integer maxTokens) {
+        return generate(systemPrompt, userPrompt, summaryModel, maxTokens);
+    }
+
+    /**
+     * 指定模型与最大输出 token 数生成；失败抛出 RuntimeException。
+     */
+    public String generate(String systemPrompt, String userPrompt, String modelName, Integer maxTokens) {
         try {
             Generation generation = new Generation();
-            GenerationResult result = generation.call(buildParam(systemPrompt, userPrompt, false));
+            GenerationResult result = generation.call(buildParam(systemPrompt, userPrompt, modelName, false, maxTokens));
             return extractText(result);
         } catch (Exception e) {
             throw new RuntimeException(toMessage(e), e);
@@ -62,7 +80,7 @@ public class QwenWorkflowClient {
         StringBuilder full = new StringBuilder();
         try {
             Generation generation = new Generation();
-            GenerationParam param = buildParam(systemPrompt, userPrompt, true);
+            GenerationParam param = buildParam(systemPrompt, userPrompt, model, true, null);
             generation.streamCall(param, new ResultCallback<GenerationResult>() {
                 @Override
                 public void onEvent(GenerationResult item) {
@@ -86,15 +104,25 @@ public class QwenWorkflowClient {
         }
     }
 
-    private GenerationParam buildParam(String systemPrompt, String userPrompt, boolean incremental) {
+    private GenerationParam buildParam(String systemPrompt, String userPrompt, String modelName, boolean incremental, Integer maxTokens) {
         List<Message> messages = new ArrayList<>();
         if (systemPrompt != null && !systemPrompt.isBlank()) {
             messages.add(Message.builder().role(Role.SYSTEM.getValue()).content(systemPrompt).build());
         }
         messages.add(Message.builder().role(Role.USER.getValue()).content(userPrompt).build());
+        if (maxTokens != null && maxTokens > 0) {
+            return GenerationParam.builder()
+                    .apiKey(API_KEY)
+                    .model(modelName)
+                    .messages(messages)
+                    .resultFormat(GenerationParam.ResultFormat.MESSAGE)
+                    .incrementalOutput(incremental)
+                    .maxTokens(maxTokens)
+                    .build();
+        }
         return GenerationParam.builder()
                 .apiKey(API_KEY)
-                .model(model)
+                .model(modelName)
                 .messages(messages)
                 .resultFormat(GenerationParam.ResultFormat.MESSAGE)
                 .incrementalOutput(incremental)

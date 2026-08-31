@@ -14,6 +14,8 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -95,6 +97,8 @@ public class SinaHotNewsSpider {
             if (con41Div != null) {
                 // 获取该div下的所有表格行
                 Elements rows = con41Div.select("table tbody tr");
+                // 热度索引：同一分类内列表越靠前热度越高
+                int hotIndex = 0;
                 for (Element row : rows) {
                     // 确保是数据行
                     if (row.select("td").size() > 0) {
@@ -113,7 +117,7 @@ public class SinaHotNewsSpider {
                                 // 链接
                                 String detailHref = link.attr("href");
                                 // 新闻日期(格式：02-18 00:57)
-                                String dateStr = dateColumn.html();
+                                String dateStr = dateColumn.text().trim();
                                 // 媒体
                                 String media = mediaColumn.html();
                                 // 获取文章详情
@@ -166,6 +170,9 @@ public class SinaHotNewsSpider {
                                 hotNewsEntity.setPicCount(picCount);
                                 hotNewsEntity.setPicList(picList);
                                 hotNewsEntity.setWordNum(str.length());
+                                hotNewsEntity.setNewsDate(parseNewsDate(dateStr));
+                                hotNewsEntity.setHot(Math.max(1, 100 - hotIndex));
+                                hotIndex++;
                                 hotNewsService.updateOrSaveSinaNewsBy(hotNewsEntity);
                             }
                         }
@@ -177,6 +184,36 @@ public class SinaHotNewsSpider {
             }
         } catch (IOException e) {
             System.out.println("新浪新闻采集失败；" + e.getMessage());
+        }
+    }
+
+    /**
+     * 解析新浪新闻日期字符串为 LocalDateTime。
+     * 新浪页面日期格式为「MM-dd HH:mm」（如 02-18 00:57），
+     * 这里补上当前年份；解析失败返回 null。
+     */
+    private LocalDateTime parseNewsDate(String dateStr) {
+        if (dateStr == null || dateStr.isEmpty()) {
+            return null;
+        }
+        try {
+            String[] parts = dateStr.trim().split("\\s+");
+            if (parts.length < 2) {
+                return null;
+            }
+            String[] md = parts[0].split("-");
+            String[] hm = parts[1].split(":");
+            if (md.length != 2 || hm.length < 2) {
+                return null;
+            }
+            int month = Integer.parseInt(md[0].trim());
+            int day = Integer.parseInt(md[1].trim());
+            int hour = Integer.parseInt(hm[0].trim());
+            int minute = Integer.parseInt(hm[1].trim());
+            int year = LocalDate.now().getYear();
+            return LocalDateTime.of(year, month, day, hour, minute);
+        } catch (Exception e) {
+            return null;
         }
     }
 

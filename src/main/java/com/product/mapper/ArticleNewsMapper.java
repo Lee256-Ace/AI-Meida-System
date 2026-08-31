@@ -5,6 +5,7 @@ import com.product.entity.ArticleNews;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -52,15 +53,27 @@ public interface ArticleNewsMapper extends BaseMapper<ArticleNews> {
     Integer deleteById(@Param("id") String id);
 
     /**
+     * 删除过时热点
+     */
+    Integer deleteOutdatedNews(@Param("threshold") LocalDateTime threshold);
+
+    /**
+     * 更新新闻摘要（缓存）
+     */
+    Integer updateSummary(@Param("id") String id, @Param("summary") String summary);
+
+    /**
      * 分页查询（带搜索条件）
      */
     List<ArticleNews> selectByPageWithSearch(@Param("offset") Integer offset, 
                                           @Param("limit") Integer limit,
-                                          @Param("title") String title);
+                                          @Param("title") String title,
+                                          @Param("type") String type);
 
     /**
      * 统计总数（带搜索条件）
      */
-    Integer countTotalWithSearch(@Param("title") String title);
+    Integer countTotalWithSearch(@Param("title") String title,
+                                 @Param("type") String type);
 
 }

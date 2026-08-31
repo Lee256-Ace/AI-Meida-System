@@ -107,6 +107,11 @@ public class ArticleNews {
      */
     private Integer wordNum;
 
+    /**
+     * 新闻摘要（缓存，避免重复调用大模型）
+     */
+    private String summary;
+
     public ArticleNews() {}
 
     public String getId() {
@@ -267,6 +272,14 @@ public class ArticleNews {
 
     public void setWordNum(Integer wordNum) {
         this.wordNum = wordNum;
+    }
+
+    public String getSummary() {
+        return summary;
+    }
+
+    public void setSummary(String summary) {
+        this.summary = summary;
     }
 
 }

@@ -40,9 +40,23 @@ public class ArticleNewsController {
     @GetMapping("/page")
     public Result<PageResult<ArticleNews>> getPage(@RequestParam(defaultValue = "1") Integer page,
                                                      @RequestParam(defaultValue = "10") Integer size,
-                                                     @RequestParam(required = false) String title) {
-        PageResult<ArticleNews> result = articlenewsService.getPage(page, size, title);
+                                                     @RequestParam(required = false) String title,
+                                                     @RequestParam(required = false) String type) {
+        PageResult<ArticleNews> result = articlenewsService.getPage(page, size, title, type);
         return Result.success(result);
+    }
+
+    /**
+     * 使用千问大模型总结文章内容
+     */
+    @GetMapping("/{id}/summarize")
+    public Result<String> summarize(@PathVariable String id) {
+        try {
+            String summary = articlenewsService.summarize(id);
+            return Result.success(summary);
+        } catch (Exception e) {
+            return Result.error("总结失败：" + e.getMessage());
+        }
     }
 
     /**

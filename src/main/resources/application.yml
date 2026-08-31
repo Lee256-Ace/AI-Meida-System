@@ -42,6 +42,12 @@ spring:
         login-username: admin
         login-password: admin
 
+  # SQL 初始化配置（启动时自动执行 schema.sql 建表；IF NOT EXISTS 保证幂等）
+  sql:
+    init:
+      mode: always
+      encoding: utf-8
+
   # 文件上传配置
   servlet:
     multipart:
@@ -85,3 +91,12 @@ jwt:
 # API Key 已直接硬编码在 QwenWorkflowClient 中；此处仅配置模型名称
 qwen:
   model: qwen-plus
+  summary-model: qwen-turbo
+
+# 新闻热点定时清理配置
+news:
+  cleanup:
+    # 热点保留天数，超过该天数的热点会被定时清理
+    retention-days: 3
+    # 定时清理 cron 表达式（默认每天凌晨 3 点执行）
+    cron: "0 0 3 * * ?"
