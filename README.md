@@ -61,6 +61,13 @@
 
 - 基于 ECharts 的统计仪表盘，可视化文案生成、热点等数据。
 
+### 私有知识库问答（RAG）
+
+- 独立服务目录：`rag-service/`（FastAPI，默认端口 `8001`）。
+- 最小链路：上传文本 → 关键词检索 → 拼 Prompt → 通义千问（Qwen）→ SSE 流式返回答案。
+- 前端入口：侧栏「私有知识库」→ `/knowledge`（Vite 代理 `/rag` → `8001`）。
+- 启动见 [rag-service/README.md](rag-service/README.md)，需配置 `DASHSCOPE_API_KEY`。
+
 ### 错误日志与排查
 
 - **MySQL 错误日志表**：`basesys.ai_error_log`，记录各模块（generate / polish / continue / qwen / auth 等）出错时的**模块**、**阶段**、错误摘要、堆栈、请求上下文。

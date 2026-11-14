@@ -20,7 +20,12 @@ export default defineConfig({
         target: 'http://localhost:8080/api',
         changeOrigin: true
       },
-      // 你可以根据需要继续添加其它接口代理
+      // RAG 私有知识库（FastAPI）
+      '/rag': {
+        target: 'http://localhost:8001',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/rag/, '')
+      },
     }
   },
   build: {

@@ -64,6 +64,11 @@
           <span>网络热点素材</span>
         </el-menu-item>
 
+        <el-menu-item index="/knowledge">
+          <el-icon><ChatDotRound /></el-icon>
+          <span>私有知识库</span>
+        </el-menu-item>
+
         <el-menu-item index="/publishHistory">
           <el-icon><Promotion /></el-icon>
           <span>历史发布</span>
@@ -126,6 +131,11 @@
           <span>网络热点素材</span>
         </el-menu-item>
 
+        <el-menu-item index="/knowledge">
+          <el-icon><ChatDotRound /></el-icon>
+          <span>私有知识库</span>
+        </el-menu-item>
+
         <el-menu-item index="/publishHistory">
           <el-icon><Promotion /></el-icon>
           <span>历史发布</span>
@@ -183,7 +193,8 @@ import {
   Clock,
   UserFilled,
   Document,
-  Promotion
+  Promotion,
+  ChatDotRound
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
@@ -202,6 +213,7 @@ const getCurrentPageTitle = () => {
     '/markdownEdit': '编辑文案',
     '/articlePlatform': '文章平台管理',
     '/articleNews': '网络热点素材',
+    '/knowledge': '私有知识库',
     '/publishHistory': '历史发布'
   }
   return routeMap[router.currentRoute.value.path] || '页面'

@@ -71,6 +71,12 @@ const routes = [
         meta: { title: '网络热点素材' }
       },
       {
+        path: 'knowledge',
+        name: 'Knowledge',
+        component: () => import('@/views/Knowledge.vue'),
+        meta: { title: '私有知识库', icon: 'ChatDotRound' }
+      },
+      {
         path: 'publishHistory',
         name: 'PublishHistoryManagement',
         component: () => import('@/views/PublishHistoryManagement.vue'),
