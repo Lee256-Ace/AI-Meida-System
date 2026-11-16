@@ -1,4 +1,4 @@
-<template>
+ <template>
   <div class="knowledge-page">
     <el-card class="side-card" shadow="never">
       <template #header>
